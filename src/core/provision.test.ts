@@ -203,14 +203,9 @@ describe('provision', () => {
 
     await expect(
       provision(adapter, { minimumSecurityMode: 'full' }),
-    ).rejects.toThrow(ProvisioningError);
-
-    try {
-      await provision(adapter, { minimumSecurityMode: 'full' });
-    } catch (e) {
-      expect(e).toBeInstanceOf(ProvisioningError);
-      expect((e as ProvisioningError).stderr).toContain("weaker than required 'full'");
-    }
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("weaker than required 'full'"),
+    });
   });
 
   it('uses agentDefault policy when none specified', async () => {
