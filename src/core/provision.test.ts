@@ -436,32 +436,44 @@ describe('provision', () => {
   });
 
   it('upload strategy uploads tarball and extracts all binaries', async () => {
-    // Mock global fetch for upload strategy
     const mockFetch = vi.fn(async () => ({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
     }));
     vi.stubGlobal('fetch', mockFetch);
 
-    const adapter = createMockAdapter();
-    const result = await provision(adapter, { installStrategy: 'upload' });
+    try {
+      const adapter = createMockAdapter();
+      const result = await provision(adapter, { installStrategy: 'upload' });
 
-    expect(result.sessionId).toBe('test-session-123');
+      expect(result.sessionId).toBe('test-session-123');
 
-    // Should have written tarball via adapter.writeFile
-    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
-    const tarballWrite = writeCalls.find(
-      ([path]: [string]) => path === '/tmp/agentsh.tar.gz',
-    );
-    expect(tarballWrite).toBeDefined();
+      // Should have written tarball via adapter.writeFile
+      const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+      const tarballWrite = writeCalls.find(
+        ([path]: [string]) => path === '/tmp/agentsh.tar.gz',
+      );
+      expect(tarballWrite).toBeDefined();
 
-    // Should have called tar to extract
-    const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
-    const tarCalls = execCalls.filter(
-      ([cmd]: [string]) => cmd === 'tar',
-    );
-    expect(tarCalls.length).toBeGreaterThanOrEqual(1);
+      // Should have called tar to extract
+      const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
+      const tarCalls = execCalls.filter(
+        ([cmd]: [string]) => cmd === 'tar',
+      );
+      expect(tarCalls.length).toBeGreaterThanOrEqual(1);
 
-    vi.unstubAllGlobals();
+      // Should have installed all three binaries
+      const installCalls = execCalls.filter(
+        ([cmd]: [string]) => cmd === 'install',
+      );
+      const installedDests = installCalls.map(
+        ([, args]: [string, string[]]) => args[args.length - 1],
+      );
+      expect(installedDests).toContain('/usr/local/bin/agentsh');
+      expect(installedDests).toContain('/usr/bin/agentsh-shell-shim');
+      expect(installedDests).toContain('/usr/local/bin/agentsh-unixwrap');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

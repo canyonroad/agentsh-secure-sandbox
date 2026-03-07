@@ -173,6 +173,22 @@ describe('cloudflare adapter', () => {
     const adapter = cloudflare(mock);
     await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
   });
+
+  it('writeFile succeeds when exitCode is undefined', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '' })),
+    };
+    const adapter = cloudflare(mock);
+    await expect(adapter.writeFile('/test', 'data')).resolves.toBeUndefined();
+  });
+
+  it('readFile succeeds when exitCode is undefined', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: 'content', stderr: '' })),
+    };
+    const adapter = cloudflare(mock);
+    await expect(adapter.readFile('/test')).resolves.toBe('content');
+  });
 });
 
 describe('blaxel adapter', () => {
@@ -264,6 +280,24 @@ describe('blaxel adapter', () => {
     };
     const adapter = blaxel(mock);
     await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
+  });
+
+  it('writeFile succeeds when exitCode is undefined', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: '', stderr: '' })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await expect(adapter.writeFile('/test', 'data')).resolves.toBeUndefined();
+  });
+
+  it('readFile succeeds when exitCode is undefined', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: 'content', stderr: '' })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await expect(adapter.readFile('/test')).resolves.toBe('content');
   });
 
   it('stop calls sandbox.delete', async () => {
