@@ -69,6 +69,13 @@ describe('PolicyDefinitionSchema', () => {
   });
 
   // Command rules
+  it('accepts command allow rule', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      commands: [{ allow: ['node', 'npm'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts command deny list', () => {
     const result = PolicyDefinitionSchema.safeParse({
       commands: [{ deny: ['env', 'printenv'] }],
