@@ -69,7 +69,7 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@blaxel/core": "^0.1.0",
+    "@blaxel/core": "^0.1.0 || ^0.2.0",
     "@cloudflare/sandbox": "^0.1.0",
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",

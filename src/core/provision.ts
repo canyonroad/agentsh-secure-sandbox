@@ -138,7 +138,7 @@ export async function provision(
     if (!exists) {
       throw new ProvisioningError({
         phase: 'install',
-        command: `test -f {${AGENTSH_PATHS.join(',')}}`,
+        command: AGENTSH_PATHS.map(p => `test -f ${p}`).join(' || '),
         stderr: 'Binary not found but installStrategy is preinstalled',
       });
     }
@@ -165,9 +165,7 @@ export async function provision(
           agentshVersion,
           arch,
           agentshChecksum,
-          installStrategy === 'download'
-            ? '/tmp/agentsh.tar.gz'
-            : '/tmp/agentsh',
+          '/tmp/agentsh.tar.gz',
         );
       }
 
@@ -486,8 +484,22 @@ async function uploadBinary(
 
   const buffer = Buffer.from(await response.arrayBuffer());
 
-  // Upload to sandbox
-  await adapter.writeFile('/tmp/agentsh', buffer);
+  // Upload tarball to sandbox and extract
+  await adapter.writeFile('/tmp/agentsh.tar.gz', buffer);
+  const tarResult = await adapter.exec('tar', [
+    'xz',
+    '-C',
+    '/tmp/',
+    '-f',
+    '/tmp/agentsh.tar.gz',
+  ]);
+  if (tarResult.exitCode !== 0) {
+    throw new ProvisioningError({
+      phase: 'install',
+      command: 'tar xz -C /tmp/ -f /tmp/agentsh.tar.gz',
+      stderr: tarResult.stderr,
+    });
+  }
 }
 
 async function verifyChecksum(
@@ -552,7 +564,16 @@ async function detectSecurityMode(
     });
   }
 
-  return parsed.security_mode as SecurityMode;
+  const mode = parsed.security_mode;
+  const validModes: SecurityMode[] = ['full', 'landlock', 'landlock-only', 'minimal'];
+  if (!validModes.includes(mode as SecurityMode)) {
+    throw new ProvisioningError({
+      phase: 'install',
+      command: 'agentsh detect --output json',
+      stderr: `Unknown security mode: '${mode}'`,
+    });
+  }
+  return mode as SecurityMode;
 }
 
 async function healthCheck(adapter: SandboxAdapter): Promise<void> {

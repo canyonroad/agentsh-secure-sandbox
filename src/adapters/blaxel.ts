@@ -30,18 +30,26 @@ export function blaxel(sandbox: any): SandboxAdapter {
     async writeFile(path, content) {
       const buf = Buffer.isBuffer(content) ? content : Buffer.from(content);
       const b64 = buf.toString('base64');
-      await sandbox.process.exec({
-        command: `printf '%s' '${b64}' | base64 -d > '${path}'`,
+      const command = shellEscape('sh', ['-c', 'printf "%s" "$1" | base64 -d > "$2"', '_', b64, path]);
+      const result = await sandbox.process.exec({
+        command,
         waitForCompletion: true,
         timeout: 60,
       });
+      if (result.exitCode !== 0) {
+        throw new Error(`writeFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
+      }
     },
     async readFile(path) {
+      const command = shellEscape('cat', [path]);
       const result = await sandbox.process.exec({
-        command: `cat '${path}'`,
+        command,
         waitForCompletion: true,
         timeout: 60,
       });
+      if (result.exitCode !== 0) {
+        throw new Error(`readFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
+      }
       return result.stdout ?? '';
     },
     async stop() {

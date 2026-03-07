@@ -59,7 +59,10 @@ function createPassthroughSandbox(
       const b64 = Buffer.from(content, 'utf-8').toString('base64');
       const result = await adapter.exec('sh', [
         '-c',
-        `printf '%s' '${b64}' | base64 -d > '${path}'`,
+        'printf "%s" "$1" | base64 -d > "$2"',
+        '_',
+        b64,
+        path,
       ]);
       if (result.exitCode !== 0) {
         return {
