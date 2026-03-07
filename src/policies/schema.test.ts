@@ -178,6 +178,43 @@ describe('PolicyDefinitionSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // Port validation
+  it('rejects port 0', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allow: 'example.com', ports: [0] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects port 65536', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allow: 'example.com', ports: [65536] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts port 443', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allow: 'example.com', ports: [443] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts port 65535', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allow: 'example.com', ports: [65535] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // CommandRedirectTarget strict
+  it('rejects command redirect target with extra properties', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      commands: [{ redirect: 'curl', to: { cmd: 'foo', args: [], extra: 'bar' } }],
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('validatePolicy', () => {

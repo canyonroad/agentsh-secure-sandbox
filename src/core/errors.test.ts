@@ -110,14 +110,22 @@ describe('MissingPeerDependencyError', () => {
     expect(err.versionRange).toBe('^1.0.0');
   });
 
-  it('generates correct message', () => {
+  it('generates correct message with quoted version range', () => {
     const err = new MissingPeerDependencyError({
       packageName: '@vercel/sandbox',
       versionRange: '^1.0.0',
     });
     expect(err.message).toBe(
-      '@vercel/sandbox is required but not installed. Run: npm install @vercel/sandbox@^1.0.0',
+      '@vercel/sandbox is required but not installed. Run: npm install @vercel/sandbox@"^1.0.0"',
     );
+  });
+
+  it('quotes version range containing || to prevent shell interpretation', () => {
+    const err = new MissingPeerDependencyError({
+      packageName: '@daytonaio/sdk',
+      versionRange: '^0.12.0 || ^1.0.0',
+    });
+    expect(err.message).toContain('@"^0.12.0 || ^1.0.0"');
   });
 });
 
@@ -195,15 +203,27 @@ describe('ProvisioningError', () => {
     expect(err.stderr).toBe('port in use');
   });
 
-  it('generates correct message', () => {
+  it('generates generic message without raw command or stderr', () => {
     const err = new ProvisioningError({
       phase: 'install',
       command: 'curl -fsSL https://...',
       stderr: 'Connection refused',
     });
-    expect(err.message).toBe(
-      'Provisioning failed at install: curl -fsSL https://... \u2014 Connection refused',
-    );
+    expect(err.message).toBe('Provisioning failed at phase: install');
+  });
+
+  it('does not leak command or stderr in message', () => {
+    const err = new ProvisioningError({
+      phase: 'install',
+      command: 'curl -H "Authorization: Bearer SECRET"',
+      stderr: 'token=abc123',
+    });
+    expect(err.message).not.toContain('curl');
+    expect(err.message).not.toContain('SECRET');
+    expect(err.message).not.toContain('token=abc123');
+    // but properties are still accessible
+    expect(err.command).toBe('curl -H "Authorization: Bearer SECRET"');
+    expect(err.stderr).toBe('token=abc123');
   });
 });
 
@@ -285,14 +305,25 @@ describe('RuntimeError', () => {
     expect(err.stderr).toBe('socket closed');
   });
 
-  it('generates correct message', () => {
+  it('generates generic message without raw command or stderr', () => {
     const err = new RuntimeError({
       sessionId: 'sess-abc123',
       command: 'ls /workspace',
       stderr: 'socket closed',
     });
-    expect(err.message).toBe(
-      'agentsh exec failed (session sess-abc123): ls /workspace \u2014 socket closed',
-    );
+    expect(err.message).toBe('agentsh exec failed (session sess-abc123)');
+  });
+
+  it('does not leak command or stderr in message', () => {
+    const err = new RuntimeError({
+      sessionId: 'sess-xyz',
+      command: 'cat /etc/shadow',
+      stderr: 'permission denied for user root',
+    });
+    expect(err.message).not.toContain('cat /etc/shadow');
+    expect(err.message).not.toContain('permission denied');
+    // but properties are still accessible
+    expect(err.command).toBe('cat /etc/shadow');
+    expect(err.stderr).toBe('permission denied for user root');
   });
 });

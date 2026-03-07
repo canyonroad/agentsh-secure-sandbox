@@ -85,6 +85,24 @@ describe('merge', () => {
 
     expect(base).toEqual(baseCopy);
   });
+
+  it('preserves base rules when override category is null', () => {
+    const base: PolicyDefinition = {
+      file: [{ allow: '/workspace/**' }],
+    };
+    const result = merge(base, { file: null as any });
+    expect(result.file).toEqual([{ allow: '/workspace/**' }]);
+  });
+
+  it('handles empty array override (no rules appended)', () => {
+    const base: PolicyDefinition = {
+      file: [{ allow: '/workspace/**' }],
+      network: [{ deny: '*' }],
+    };
+    const result = merge(base, { file: [] });
+    expect(result.file).toEqual([{ allow: '/workspace/**' }]);
+    expect(result.network).toEqual([{ deny: '*' }]);
+  });
 });
 
 describe('mergePrepend', () => {

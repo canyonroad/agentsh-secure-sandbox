@@ -32,7 +32,7 @@ export class MissingPeerDependencyError extends AgentSHError {
     versionRange: string;
   }) {
     super(
-      `${packageName} is required but not installed. Run: npm install ${packageName}@${versionRange}`,
+      `${packageName} is required but not installed. Run: npm install ${packageName}@"${versionRange}"`,
     );
     this.name = 'MissingPeerDependencyError';
     this.packageName = packageName;
@@ -78,7 +78,7 @@ export class ProvisioningError extends AgentSHError {
     command: string;
     stderr: string;
   }) {
-    super(`Provisioning failed at ${phase}: ${command} \u2014 ${stderr}`);
+    super(`Provisioning failed at phase: ${phase}`);
     this.name = 'ProvisioningError';
     this.phase = phase;
     this.command = command;
@@ -120,9 +120,7 @@ export class RuntimeError extends AgentSHError {
     command: string;
     stderr: string;
   }) {
-    super(
-      `agentsh exec failed (session ${sessionId}): ${command} \u2014 ${stderr}`,
-    );
+    super(`agentsh exec failed (session ${sessionId})`);
     this.name = 'RuntimeError';
     this.sessionId = sessionId;
     this.command = command;

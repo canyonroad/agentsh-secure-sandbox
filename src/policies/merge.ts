@@ -28,7 +28,7 @@ function mergeInternal(
   const result: any = { ...base };
   for (const override of overrides) {
     for (const key of CATEGORIES) {
-      if (override[key]) {
+      if (override[key] != null) {
         const baseRules = result[key] ?? [];
         result[key] = mode === 'append'
           ? [...baseRules, ...override[key]!]

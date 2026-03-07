@@ -180,9 +180,10 @@ describe('provision', () => {
 
     await promise;
     expect(caughtError).toBeInstanceOf(ProvisioningError);
-    expect((caughtError as ProvisioningError).message).toContain(
-      'Health check',
+    expect((caughtError as ProvisioningError).message).toBe(
+      'Provisioning failed at phase: startup',
     );
+    expect((caughtError as ProvisioningError).stderr).toBe('Health check failed after 10 attempts');
 
     vi.useRealTimers();
   }, 10000);
@@ -204,9 +205,12 @@ describe('provision', () => {
       provision(adapter, { minimumSecurityMode: 'full' }),
     ).rejects.toThrow(ProvisioningError);
 
-    await expect(
-      provision(adapter, { minimumSecurityMode: 'full' }),
-    ).rejects.toThrow("weaker than required 'full'");
+    try {
+      await provision(adapter, { minimumSecurityMode: 'full' });
+    } catch (e) {
+      expect(e).toBeInstanceOf(ProvisioningError);
+      expect((e as ProvisioningError).stderr).toContain("weaker than required 'full'");
+    }
   });
 
   it('uses agentDefault policy when none specified', async () => {

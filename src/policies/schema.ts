@@ -42,7 +42,7 @@ export const FileRuleSchema = z.union([
 const NetworkAllowRule = z
   .object({
     allow: stringOrArray,
-    ports: z.array(z.number().int().positive()).optional(),
+    ports: z.array(z.number().int().min(1).max(65535)).optional(),
   })
   .strict();
 
@@ -62,7 +62,7 @@ export const NetworkRuleSchema = z.union([
 
 const CommandRedirectTarget = z.union([
   z.string(),
-  z.object({ cmd: z.string(), args: z.array(z.string()) }),
+  z.object({ cmd: z.string(), args: z.array(z.string()) }).strict(),
 ]);
 
 const CommandAllowRule = z.object({ allow: stringOrArray }).strict();
