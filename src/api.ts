@@ -25,6 +25,7 @@ export async function createSandbox(
 ): Promise<SecuredSandbox> {
   let Sandbox: any;
   try {
+    // @ts-ignore — optional peer dependency, resolved at runtime
     const mod = await import('@vercel/sandbox');
     Sandbox = mod.Sandbox;
   } catch {
