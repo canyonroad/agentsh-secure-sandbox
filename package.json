@@ -32,7 +32,9 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -46,18 +48,25 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.3.5",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@vercel/sandbox": "^1.0.0",
+    "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
-    "@daytonaio/sdk": "^0.12.0 || ^1.0.0"
+    "@vercel/sandbox": "^1.0.0"
   },
   "peerDependenciesMeta": {
-    "@vercel/sandbox": { "optional": true },
-    "@e2b/code-interpreter": { "optional": true },
-    "@daytonaio/sdk": { "optional": true }
+    "@vercel/sandbox": {
+      "optional": true
+    },
+    "@e2b/code-interpreter": {
+      "optional": true
+    },
+    "@daytonaio/sdk": {
+      "optional": true
+    }
   }
 }
