@@ -1,21 +1,5 @@
 import type { PolicyDefinition } from './schema.js';
-
-// ─── Internal helper ───────────────────────────────────────
-
-function applyExtensions(
-  base: PolicyDefinition,
-  extensions?: Partial<PolicyDefinition>,
-): PolicyDefinition {
-  if (!extensions) return base;
-  const result = { ...base };
-  const categories = ['file', 'network', 'commands', 'env', 'dns', 'connect'] as const;
-  for (const key of categories) {
-    if (extensions[key]) {
-      result[key] = [...(base[key] ?? []), ...extensions[key]!] as any;
-    }
-  }
-  return result;
-}
+import { merge } from './merge.js';
 
 // ─── agentDefault ──────────────────────────────────────────
 
@@ -57,7 +41,7 @@ export function agentDefault(
       },
     ],
   };
-  return applyExtensions(base, extensions);
+  return extensions ? merge(base, extensions) : base;
 }
 
 // ─── devSafe ───────────────────────────────────────────────
@@ -82,7 +66,7 @@ export function devSafe(
     ],
     commands: [{ deny: ['env', 'printenv', 'shutdown', 'reboot'] }],
   };
-  return applyExtensions(base, extensions);
+  return extensions ? merge(base, extensions) : base;
 }
 
 // ─── ciStrict ──────────────────────────────────────────────
@@ -106,7 +90,7 @@ export function ciStrict(
       { deny: ['env', 'printenv', 'shutdown', 'reboot', 'sudo'] },
     ],
   };
-  return applyExtensions(base, extensions);
+  return extensions ? merge(base, extensions) : base;
 }
 
 // ─── agentSandbox ──────────────────────────────────────────
@@ -127,5 +111,5 @@ export function agentSandbox(
       { deny: ['env', 'printenv', 'sudo', 'su', 'shutdown', 'reboot'] },
     ],
   };
-  return applyExtensions(base, extensions);
+  return extensions ? merge(base, extensions) : base;
 }
