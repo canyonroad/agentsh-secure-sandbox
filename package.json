@@ -58,10 +58,12 @@
   "devDependencies": {
     "@blaxel/core": "^0.2.71",
     "@cloudflare/sandbox": "^0.7.13",
+    "@daytonaio/sdk": "^0.149.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
     "@vercel/sandbox": "^1.8.0",
     "dotenv": "^17.3.1",
+    "e2b": "^2.14.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

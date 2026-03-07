@@ -14,9 +14,21 @@ export function agentDefault(
   const base: PolicyDefinition = {
     file: [
       { allow: '/workspace/**', ops: ['read', 'write', 'create'] },
+      // Git/version-control credentials
       { deny: ['/workspace/.git/config', '/workspace/.netrc'] },
-      { deny: ['**/.env', '**/.env.*', '**/credentials*', '~/.ssh/**'] },
-      { deny: '/proc/*/environ' },
+      // Secrets and credentials
+      { deny: ['**/.env', '**/.env.*', '**/credentials*', '**/*.pem', '**/*.key'] },
+      { deny: ['~/.ssh/**', '/proc/*/environ'] },
+      // Cloud provider credentials
+      { deny: ['~/.aws/**', '~/.gcp/**', '~/.azure/**', '~/.config/gcloud/**'] },
+      // Shell config injection (persistence)
+      { deny: ['~/.bashrc', '~/.zshrc', '~/.profile', '~/.bash_profile'] },
+      // Credential stores
+      { deny: ['~/.gitconfig', '~/.netrc', '~/.curlrc', '~/.wgetrc'] },
+      // PATH hijacking
+      { deny: '~/.local/bin/**' },
+      // Agent config files (prompt injection)
+      { deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'] },
     ],
     network: [
       {
@@ -25,6 +37,13 @@ export function agentDefault(
           'registry.yarnpkg.com',
           'pypi.org',
           'files.pythonhosted.org',
+          'crates.io',
+          'static.crates.io',
+          'index.crates.io',
+          'proxy.golang.org',
+          'sum.golang.org',
+          'github.com',
+          'raw.githubusercontent.com',
         ],
         ports: [443],
       },
@@ -75,8 +94,11 @@ export function devSafe(
   const base: PolicyDefinition = {
     file: [
       { allow: '/workspace/**', ops: ['read', 'write', 'create'] },
-      { deny: ['**/.env', '**/.env.*', '**/credentials*', '~/.ssh/**'] },
-      { deny: '/proc/*/environ' },
+      { deny: ['**/.env', '**/.env.*', '**/credentials*', '**/*.pem', '**/*.key'] },
+      { deny: ['~/.ssh/**', '/proc/*/environ'] },
+      { deny: ['~/.aws/**', '~/.gcp/**', '~/.azure/**', '~/.config/gcloud/**'] },
+      { deny: ['~/.bashrc', '~/.zshrc', '~/.profile', '~/.bash_profile'] },
+      { deny: ['~/.gitconfig', '~/.netrc', '~/.curlrc', '~/.wgetrc'] },
     ],
     network: [
       {
@@ -98,10 +120,23 @@ export function ciStrict(
   extensions?: Partial<PolicyDefinition>,
 ): PolicyDefinition {
   const base: PolicyDefinition = {
-    file: [{ allow: '/workspace/**' }, { deny: '/**' }],
+    file: [
+      { allow: '/workspace/**' },
+      { deny: ['**/.env', '**/.env.*', '**/credentials*', '**/*.pem', '**/*.key'] },
+      { deny: ['~/.aws/**', '~/.gcp/**', '~/.azure/**', '~/.config/gcloud/**'] },
+      { deny: '/**' },
+    ],
     network: [
       {
-        allow: ['registry.npmjs.org', 'registry.yarnpkg.com'],
+        allow: [
+          'registry.npmjs.org',
+          'registry.yarnpkg.com',
+          'pypi.org',
+          'files.pythonhosted.org',
+          'crates.io',
+          'static.crates.io',
+          'proxy.golang.org',
+        ],
         ports: [443],
       },
       { deny: '*' },
