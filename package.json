@@ -27,6 +27,10 @@
       "types": "./dist/adapters/cloudflare.d.ts",
       "import": "./dist/adapters/cloudflare.js"
     },
+    "./adapters/blaxel": {
+      "types": "./dist/adapters/blaxel.d.ts",
+      "import": "./dist/adapters/blaxel.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
@@ -52,6 +56,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@blaxel/core": "^0.2.71",
     "@cloudflare/sandbox": "^0.7.13",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
@@ -62,6 +67,7 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
+    "@blaxel/core": "^0.1.0",
     "@cloudflare/sandbox": "^0.1.0",
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
@@ -72,6 +78,9 @@
       "optional": true
     },
     "@e2b/code-interpreter": {
+      "optional": true
+    },
+    "@blaxel/core": {
       "optional": true
     },
     "@cloudflare/sandbox": {

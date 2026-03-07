@@ -3,6 +3,7 @@ import { vercel } from './vercel.js';
 import { e2b } from './e2b.js';
 import { daytona } from './daytona.js';
 import { cloudflare } from './cloudflare.js';
+import { blaxel } from './blaxel.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -155,5 +156,89 @@ describe('cloudflare adapter', () => {
     const content = await adapter.readFile('/workspace/test.txt');
     expect(mock.exec).toHaveBeenCalledWith(expect.stringContaining('cat'));
     expect(content).toBe('file content');
+  });
+});
+
+describe('blaxel adapter', () => {
+  it('maps exec to sandbox.process.exec with shell-escaped command', async () => {
+    const mock = {
+      process: {
+        exec: vi.fn(async () => ({ stdout: 'out', stderr: '', exitCode: 0 })),
+      },
+      fs: { write: vi.fn(), writeBinary: vi.fn(), read: vi.fn() },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    const result = await adapter.exec('echo', ['hello world']);
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('echo'), waitForCompletion: true }),
+    );
+    expect(result.stdout).toBe('out');
+  });
+
+  it('prepends sudo to command', async () => {
+    const mock = {
+      process: {
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      },
+      fs: { write: vi.fn(), writeBinary: vi.fn(), read: vi.fn() },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringMatching(/^sudo /) }),
+    );
+  });
+
+  it('detached returns immediately with exitCode 0', async () => {
+    const mock = {
+      process: {
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      },
+      fs: { write: vi.fn(), writeBinary: vi.fn(), read: vi.fn() },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    const result = await adapter.exec('server', ['start'], { detached: true });
+    expect(result.exitCode).toBe(0);
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ waitForCompletion: false }),
+    );
+  });
+
+  it('writeFile uses exec-based base64 approach', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await adapter.writeFile('/workspace/test.txt', 'hello');
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('base64') }),
+    );
+  });
+
+  it('readFile uses exec-based cat', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: 'file content', stderr: '', exitCode: 0 })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    const content = await adapter.readFile('/workspace/test.txt');
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('cat') }),
+    );
+    expect(content).toBe('file content');
+  });
+
+  it('stop calls sandbox.delete', async () => {
+    const mock = {
+      process: { exec: vi.fn() },
+      delete: vi.fn(async () => {}),
+    };
+    const adapter = blaxel(mock);
+    await adapter.stop!();
+    expect(mock.delete).toHaveBeenCalled();
   });
 });
