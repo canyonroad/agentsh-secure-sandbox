@@ -11,7 +11,7 @@ describe('policy integration', () => {
     const parsed = yaml.load(yamlStr) as any;
     expect(parsed.file_rules.length).toBeGreaterThanOrEqual(4);
     const stripeRule = parsed.network_rules.find(
-      (r: any) => r.decision === 'allow' && r.hosts?.includes('api.stripe.com'),
+      (r: any) => r.decision === 'allow' && r.domains?.includes('api.stripe.com'),
     );
     expect(stripeRule).toBeDefined();
   });

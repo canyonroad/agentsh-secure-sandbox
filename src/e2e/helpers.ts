@@ -1,0 +1,14 @@
+import { config } from 'dotenv';
+import { resolve } from 'node:path';
+
+// Load .env.e2e from project root
+config({ path: resolve(import.meta.dirname, '../../.env.e2e') });
+
+export const ENV = {
+  VERCEL_TOKEN: process.env.VERCEL_TOKEN,
+  VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+  VERCEL_TEAM_ID: process.env.VERCEL_TEAM_ID,
+  E2B_API_KEY: process.env.E2B_API_KEY,
+  DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
+  DAYTONA_SERVER_URL: process.env.DAYTONA_SERVER_URL,
+};

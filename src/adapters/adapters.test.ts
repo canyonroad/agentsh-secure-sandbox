@@ -19,11 +19,14 @@ describe('vercel adapter', () => {
     const mock = { runCommand: vi.fn(), writeFiles: vi.fn(async () => {}), readFile: vi.fn(), stop: vi.fn() };
     const adapter = vercel(mock);
     await adapter.writeFile('/workspace/test.txt', 'hello');
-    expect(mock.writeFiles).toHaveBeenCalledWith([{ path: '/workspace/test.txt', content: 'hello' }]);
+    expect(mock.writeFiles).toHaveBeenCalledWith([{ path: '/workspace/test.txt', content: Buffer.from('hello') }]);
   });
 
   it('maps readFile to sandbox.readFile', async () => {
-    const mock = { runCommand: vi.fn(), writeFiles: vi.fn(), readFile: vi.fn(async () => 'content'), stop: vi.fn() };
+    // Vercel readFile returns a ReadableStream
+    const { Readable } = await import('node:stream');
+    const stream = Readable.from([Buffer.from('content')]);
+    const mock = { runCommand: vi.fn(), writeFiles: vi.fn(), readFile: vi.fn(async () => stream), stop: vi.fn() };
     const adapter = vercel(mock);
     expect(await adapter.readFile('/test')).toBe('content');
   });

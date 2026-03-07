@@ -22,8 +22,8 @@ function createFullMockAdapter(): SandboxAdapter {
         };
       if (full.includes('agentsh detect'))
         return {
-          stdout: JSON.stringify({ mode: 'full' }),
-          stderr: '',
+          stdout: '',
+          stderr: JSON.stringify({ security_mode: 'full' }),
           exitCode: 0,
         };
       if (full.includes('agentsh session create'))
@@ -89,6 +89,13 @@ describe('secureSandbox', () => {
 
 describe('createSandbox', () => {
   it('throws MissingPeerDependencyError when @vercel/sandbox not installed', async () => {
-    await expect(createSandbox()).rejects.toThrow(MissingPeerDependencyError);
+    // Mock the dynamic import to simulate missing package
+    vi.doMock('@vercel/sandbox', () => {
+      throw new Error('Cannot find module');
+    });
+    // Re-import api to pick up the mock
+    const { createSandbox: create } = await import('./api.js');
+    await expect(create()).rejects.toThrow(MissingPeerDependencyError);
+    vi.doUnmock('@vercel/sandbox');
   });
 });

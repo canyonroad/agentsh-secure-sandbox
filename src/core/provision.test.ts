@@ -22,13 +22,13 @@ function createMockAdapter(
       '2ab8ba0d6637fe1a5badf840c3db197161a6f9865d721ed216029d229b1b9bbc',
     ),
     install: ok(),
-    'agentsh detect': ok(JSON.stringify({ mode: 'full' })),
+    'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
     'agentsh shim': ok(),
     mkdir: ok(),
     find: ok(),
     chown: ok(),
     'agentsh server': ok(),
-    'agentsh health': ok(),
+    'curl -sf http://127.0.0.1:18080/health': ok(),
     'agentsh session': ok(
       JSON.stringify({ session_id: 'test-session-123' }),
     ),
@@ -75,12 +75,13 @@ describe('provision', () => {
     });
 
     expect(result.sessionId).toBe('test-session-123');
-    // curl/wget should not have been called
+    // curl/wget should not have been called for download (health check uses curl too)
     const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
-    const curlCalls = execCalls.filter(
-      ([cmd]: [string]) => cmd === 'curl',
+    const downloadCurlCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'curl' && !args?.some((a: string) => a.includes('/health')),
     );
-    expect(curlCalls).toHaveLength(0);
+    expect(downloadCurlCalls).toHaveLength(0);
   });
 
   it('throws when preinstalled but binary not found', async () => {
@@ -165,7 +166,7 @@ describe('provision', () => {
   it('throws on health check failure', async () => {
     vi.useFakeTimers();
     const adapter = createMockAdapter({
-      'agentsh health': { stdout: '', stderr: 'not ready', exitCode: 1 },
+      'curl -sf http://127.0.0.1:18080/health': { stdout: '', stderr: 'not ready', exitCode: 1 },
     });
 
     let caughtError: unknown;
@@ -198,7 +199,7 @@ describe('provision', () => {
 
   it('throws when minimum security mode not met', async () => {
     const adapter = createMockAdapter({
-      'agentsh detect': ok(JSON.stringify({ mode: 'minimal' })),
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'minimal' }), exitCode: 0 },
     });
 
     const p = provision(adapter, { minimumSecurityMode: 'full' });

@@ -76,7 +76,7 @@ describe('binaryUrl', () => {
   it('returns default GitHub URL', () => {
     const url = binaryUrl('0.14.0', 'linux_amd64');
     expect(url).toBe(
-      'https://github.com/canyonroad/agentsh/releases/download/v0.14.0/agentsh_linux_amd64.tar.gz',
+      'https://github.com/canyonroad/agentsh/releases/download/v0.14.0/agentsh_0.14.0_linux_amd64.tar.gz',
     );
   });
 

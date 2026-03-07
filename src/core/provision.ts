@@ -133,30 +133,22 @@ export async function provision(
         );
       }
 
-      // Step 5: Install binary
-      if (installStrategy === 'download') {
+      // Step 5: Install binaries (agentsh + agentsh-shell-shim + agentsh-unixwrap)
+      const binaries = [
+        { src: '/tmp/agentsh', dest: '/usr/local/bin/agentsh' },
+        { src: '/tmp/agentsh-shell-shim', dest: '/usr/bin/agentsh-shell-shim' },
+        { src: '/tmp/agentsh-unixwrap', dest: '/usr/local/bin/agentsh-unixwrap' },
+      ];
+      for (const { src, dest } of binaries) {
         const installResult = await adapter.exec(
           'install',
-          ['-m', '0755', '/tmp/agentsh', '/usr/local/bin/agentsh'],
+          ['-m', '0755', src, dest],
           { sudo: true },
         );
         if (installResult.exitCode !== 0) {
           throw new ProvisioningError({
             phase: 'install',
-            command: 'install -m 0755 /tmp/agentsh /usr/local/bin/agentsh',
-            stderr: installResult.stderr,
-          });
-        }
-      } else {
-        const installResult = await adapter.exec(
-          'install',
-          ['-m', '0755', '/tmp/agentsh', '/usr/local/bin/agentsh'],
-          { sudo: true },
-        );
-        if (installResult.exitCode !== 0) {
-          throw new ProvisioningError({
-            phase: 'install',
-            command: 'install -m 0755 /tmp/agentsh /usr/local/bin/agentsh',
+            command: `install -m 0755 ${src} ${dest}`,
             stderr: installResult.stderr,
           });
         }
@@ -179,7 +171,13 @@ export async function provision(
   // Step 6: Install shell shim
   const shimResult = await adapter.exec(
     'agentsh',
-    ['shim', 'install-shell'],
+    [
+      'shim', 'install-shell',
+      '--root', '/',
+      '--shim', '/usr/bin/agentsh-shell-shim',
+      '--bash',
+      '--i-understand-this-modifies-the-host',
+    ],
     { sudo: true },
   );
   if (shimResult.exitCode !== 0) {
@@ -192,7 +190,7 @@ export async function provision(
 
   // ─── Phase 2: Policy & Config ───────────────────────────────
 
-  // Step 7: Create dirs and write system policy
+  // Step 7: Create dirs and make writable for file writes
   const mkdirResult = await adapter.exec(
     'mkdir',
     ['-p', '/etc/agentsh/system'],
@@ -205,6 +203,9 @@ export async function provision(
       stderr: mkdirResult.stderr,
     });
   }
+
+  // Temporarily make writable so adapter.writeFile (which may not support sudo) can write
+  await adapter.exec('chmod', ['-R', '777', '/etc/agentsh/'], { sudo: true });
 
   await adapter.writeFile(
     '/etc/agentsh/system/policy.yml',
@@ -273,6 +274,9 @@ export async function provision(
 
   // ─── Phase 3: Server Startup ────────────────────────────────
 
+  // Step 10b: Ensure workspace directory exists
+  await adapter.exec('mkdir', ['-p', workspace], { sudo: true });
+
   // Step 11: Start server
   const serverResult = await adapter.exec(
     'agentsh',
@@ -307,18 +311,23 @@ export async function provision(
     });
   }
 
-  let sessionData: { session_id: string };
+  let sessionId: string;
   try {
-    sessionData = JSON.parse(sessionResult.stdout);
+    const sessionData = JSON.parse(sessionResult.stdout);
+    sessionId = sessionData.session_id;
   } catch {
-    throw new ProvisioningError({
-      phase: 'session',
-      command: 'agentsh session create',
-      stderr: `Failed to parse session JSON: ${sessionResult.stdout}`,
-    });
+    // Fallback: parse text output like "Session session-xxx started"
+    const match = sessionResult.stdout.match(/Session\s+(session-[^\s]+)/);
+    if (match) {
+      sessionId = match[1];
+    } else {
+      throw new ProvisioningError({
+        phase: 'session',
+        command: 'agentsh session create',
+        stderr: `Failed to parse session output: ${sessionResult.stdout}`,
+      });
+    }
   }
-
-  const sessionId = sessionData.session_id;
 
   // Step 13b: Set trace context if traceParent is provided
   if (traceParent) {
@@ -372,13 +381,22 @@ async function downloadBinary(
   ]);
 
   if (curlResult.exitCode !== 0) {
-    // Fallback to wget
-    const wgetResult = await adapter.exec('wget', [
-      '-q',
-      url,
-      '-O',
-      '/tmp/agentsh.tar.gz',
-    ]);
+    // Fallback to wget (may not be available on all platforms)
+    let wgetResult: ExecResult;
+    try {
+      wgetResult = await adapter.exec('wget', [
+        '-q',
+        url,
+        '-O',
+        '/tmp/agentsh.tar.gz',
+      ]);
+    } catch {
+      throw new ProvisioningError({
+        phase: 'install',
+        command: `curl -fsSL ${url} -o /tmp/agentsh.tar.gz`,
+        stderr: curlResult.stderr || 'Download failed (curl failed, wget not available)',
+      });
+    }
     if (wgetResult.exitCode !== 0) {
       throw new ProvisioningError({
         phase: 'install',
@@ -469,27 +487,29 @@ async function verifyChecksum(
 async function detectSecurityMode(
   adapter: SandboxAdapter,
 ): Promise<SecurityMode> {
-  const result = await adapter.exec('agentsh', ['detect', '--json']);
+  const result = await adapter.exec('agentsh', ['detect', '--output', 'json']);
   if (result.exitCode !== 0) {
     throw new ProvisioningError({
       phase: 'install',
-      command: 'agentsh detect --json',
+      command: 'agentsh detect --output json',
       stderr: result.stderr,
     });
   }
 
-  let parsed: { mode: string };
+  // agentsh detect outputs JSON to stderr
+  const jsonOutput = result.stderr || result.stdout;
+  let parsed: { security_mode: string };
   try {
-    parsed = JSON.parse(result.stdout);
+    parsed = JSON.parse(jsonOutput);
   } catch {
     throw new ProvisioningError({
       phase: 'install',
-      command: 'agentsh detect --json',
-      stderr: `Failed to parse detect JSON: ${result.stdout}`,
+      command: 'agentsh detect --output json',
+      stderr: `Failed to parse detect JSON: ${jsonOutput.slice(0, 200)}`,
     });
   }
 
-  return parsed.mode as SecurityMode;
+  return parsed.security_mode as SecurityMode;
 }
 
 async function healthCheck(adapter: SandboxAdapter): Promise<void> {
@@ -497,7 +517,10 @@ async function healthCheck(adapter: SandboxAdapter): Promise<void> {
   const delayMs = 500;
 
   for (let i = 0; i < maxRetries; i++) {
-    const result = await adapter.exec('agentsh', ['health']);
+    const result = await adapter.exec('curl', [
+      '-sf',
+      'http://127.0.0.1:18080/health',
+    ]);
     if (result.exitCode === 0) {
       return;
     }
@@ -508,7 +531,7 @@ async function healthCheck(adapter: SandboxAdapter): Promise<void> {
 
   throw new ProvisioningError({
     phase: 'startup',
-    command: 'agentsh health',
+    command: 'curl http://127.0.0.1:18080/health',
     stderr: 'Health check failed after 10 attempts',
   });
 }

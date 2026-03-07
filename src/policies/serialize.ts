@@ -81,11 +81,11 @@ function serializeNetworkRules(
   return rules.map((rule, i) => {
     const r = rule as Record<string, unknown>;
     const { key, value } = findDecision(r, SIMPLE_DECISION_KEYS);
-    const hosts = toArray(value as string | string[]);
+    const domains = toArray(value as string | string[]);
 
     const out: Record<string, unknown> = {
       name: `network-rule-${i}`,
-      hosts,
+      domains,
       decision: key,
     };
 
@@ -179,7 +179,10 @@ function serializeConnectRedirects(
  * Omits empty categories from output.
  */
 export function serializePolicy(policy: PolicyDefinition): string {
-  const doc: Record<string, unknown> = {};
+  const doc: Record<string, unknown> = {
+    version: 1,
+    name: 'secure-sandbox-policy',
+  };
 
   if (policy.file && policy.file.length > 0) {
     doc.file_rules = serializeFileRules(policy.file);
@@ -217,6 +220,8 @@ export function serializePolicy(policy: PolicyDefinition): string {
  */
 export function systemPolicyYaml(): string {
   const doc = {
+    version: 1,
+    name: '_system-protection',
     file_rules: [
       {
         name: '_system-protect-config',

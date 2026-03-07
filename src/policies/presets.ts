@@ -31,6 +31,26 @@ export function agentDefault(
       { deny: '*' },
     ],
     commands: [
+      // Allow safe commands (order matters — first match wins)
+      {
+        allow: [
+          'bash', 'sh', 'echo', 'cat', 'head', 'tail', 'grep', 'find',
+          'ls', 'wc', 'sort', 'uniq', 'diff', 'pwd', 'date', 'which',
+          'whoami', 'id', 'uname', 'printf', 'test', 'true', 'false',
+          'mkdir', 'cp', 'mv', 'rm', 'touch', 'chmod', 'tr', 'cut',
+          'sed', 'awk', 'tee', 'xargs', 'basename', 'dirname', 'realpath',
+          'base64', 'md5sum', 'sha256sum', 'tar', 'gzip', 'gunzip',
+        ],
+      },
+      // Allow dev tools
+      {
+        allow: [
+          'git', 'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun',
+          'python', 'python3', 'pip', 'pip3',
+          'cargo', 'rustc', 'go', 'make', 'cmake',
+        ],
+      },
+      // Deny dangerous commands
       { deny: ['env', 'printenv', 'sudo', 'su', 'doas'] },
       { deny: ['shutdown', 'reboot', 'halt', 'poweroff'] },
       { deny: ['nc', 'ncat', 'netcat', 'socat', 'telnet'] },

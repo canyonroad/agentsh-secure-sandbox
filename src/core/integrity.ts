@@ -64,5 +64,5 @@ export function binaryUrl(
     return overrideUrl;
   }
 
-  return `https://github.com/canyonroad/agentsh/releases/download/v${version}/agentsh_${arch}.tar.gz`;
+  return `https://github.com/canyonroad/agentsh/releases/download/v${version}/agentsh_${version}_${arch}.tar.gz`;
 }

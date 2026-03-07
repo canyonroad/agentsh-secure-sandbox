@@ -6,6 +6,22 @@ import type {
 } from './types.js';
 import { RuntimeError } from './errors.js';
 
+/** Parse the JSON envelope from `agentsh exec --output json`. */
+function parseExecJson(raw: ExecResult): ExecResult {
+  try {
+    const json = JSON.parse(raw.stdout);
+    const result = json.result ?? {};
+    return {
+      exitCode: result.exit_code ?? raw.exitCode,
+      stdout: result.stdout ?? '',
+      stderr: result.stderr ?? result.error?.message ?? '',
+    };
+  } catch {
+    // If not valid JSON, return as-is (e.g. mock adapters)
+    return raw;
+  }
+}
+
 export function createSecuredSandbox(
   adapter: SandboxAdapter,
   sessionId: string,
@@ -35,7 +51,7 @@ export function createSecuredSandbox(
           stderr: result.stderr,
         });
       }
-      return result;
+      return parseExecJson(result);
     },
 
     async writeFile(path, content) {
