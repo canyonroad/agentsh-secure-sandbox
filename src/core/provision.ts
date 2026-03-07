@@ -44,13 +44,16 @@ function mapArch(uname: string): 'linux_amd64' | 'linux_arm64' {
 
 // ─── Helper: check if binary exists ───────────────────────────
 
+const AGENTSH_PATHS = ['/usr/local/bin/agentsh', '/usr/bin/agentsh'];
+
 async function binaryExists(adapter: SandboxAdapter): Promise<boolean> {
-  const binaryPath = '/usr/local/bin/agentsh';
-  if (adapter.fileExists) {
-    return adapter.fileExists(binaryPath);
+  for (const path of AGENTSH_PATHS) {
+    const found = adapter.fileExists
+      ? await adapter.fileExists(path)
+      : (await adapter.exec('test', ['-f', path])).exitCode === 0;
+    if (found) return true;
   }
-  const result = await adapter.exec('test', ['-f', binaryPath]);
-  return result.exitCode === 0;
+  return false;
 }
 
 // ─── Helper: sleep ────────────────────────────────────────────
@@ -100,7 +103,7 @@ export async function provision(
     if (!exists) {
       throw new ProvisioningError({
         phase: 'install',
-        command: 'test -f /usr/local/bin/agentsh',
+        command: `test -f {${AGENTSH_PATHS.join(',')}}`,
         stderr: 'Binary not found but installStrategy is preinstalled',
       });
     }
