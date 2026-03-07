@@ -67,6 +67,8 @@ function sleep(ms: number): Promise<void> {
 export interface ProvisionResult {
   sessionId: string;
   securityMode: SecurityMode;
+  /** When true, the shell shim enforces policy — skip agentsh exec wrapper. */
+  passthrough?: boolean;
 }
 
 export async function provision(
@@ -87,12 +89,45 @@ export async function provision(
     realPaths = false,
     enforceRedirects = false,
     traceParent,
+    policyName = 'policy',
   } = config;
 
   // Resolve and validate policy
   const policy = rawPolicy ? validatePolicy(rawPolicy) : agentDefault();
 
   let securityMode: SecurityMode = 'full';
+
+  if (installStrategy === 'running') {
+    // agentsh is already fully provisioned and running with the shell shim
+    // installed. Commands go through the shim automatically, so we don't
+    // create a new session (which would deadlock the server via nested
+    // agentsh connections). Instead, read the existing session ID from
+    // the environment and use passthrough mode at runtime.
+    securityMode = await detectSecurityMode(adapter);
+
+    if (minimumSecurityMode && isWeakerThan(securityMode, minimumSecurityMode)) {
+      throw new ProvisioningError({
+        phase: 'install',
+        command: 'agentsh detect --output json',
+        stderr: `Detected security mode '${securityMode}' is weaker than required '${minimumSecurityMode}'`,
+      });
+    }
+
+    await healthCheck(adapter);
+
+    // Read the existing session ID from the environment
+    const envResult = await adapter.exec('sh', ['-c', 'echo $AGENTSH_SESSION_ID']);
+    const sessionId = envResult.stdout.trim();
+    if (!sessionId) {
+      throw new ProvisioningError({
+        phase: 'session',
+        command: 'echo $AGENTSH_SESSION_ID',
+        stderr: 'AGENTSH_SESSION_ID not set — running strategy requires a pre-created session',
+      });
+    }
+
+    return { sessionId, securityMode, passthrough: true };
+  }
 
   // ─── Phase 1: Binary Installation ───────────────────────────
 

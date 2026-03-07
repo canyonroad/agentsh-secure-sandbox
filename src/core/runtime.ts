@@ -26,6 +26,74 @@ export function createSecuredSandbox(
   adapter: SandboxAdapter,
   sessionId: string,
   securityMode: SecurityMode,
+  options?: { passthrough?: boolean },
+): SecuredSandbox {
+  if (options?.passthrough) {
+    return createPassthroughSandbox(adapter, sessionId, securityMode);
+  }
+  return createAgentshSandbox(adapter, sessionId, securityMode);
+}
+
+/**
+ * Passthrough mode: the shell shim enforces policy on every command,
+ * so we run commands directly through the adapter without wrapping
+ * them in `agentsh exec`. Used with the 'running' install strategy.
+ */
+function createPassthroughSandbox(
+  adapter: SandboxAdapter,
+  sessionId: string,
+  securityMode: SecurityMode,
+): SecuredSandbox {
+  return {
+    sessionId,
+    securityMode,
+
+    async exec(command, opts) {
+      const result = await adapter.exec('bash', ['-c', command], {
+        cwd: opts?.cwd,
+      });
+      return result;
+    },
+
+    async writeFile(path, content) {
+      const b64 = Buffer.from(content, 'utf-8').toString('base64');
+      const result = await adapter.exec('sh', [
+        '-c',
+        `printf '%s' '${b64}' | base64 -d > '${path}'`,
+      ]);
+      if (result.exitCode !== 0) {
+        return {
+          success: false as const,
+          path,
+          error: result.stderr || 'writeFile failed',
+        };
+      }
+      return { success: true as const, path };
+    },
+
+    async readFile(path) {
+      const result = await adapter.exec('cat', [path]);
+      if (result.exitCode !== 0) {
+        return {
+          success: false as const,
+          path,
+          error: result.stderr || 'readFile failed',
+        };
+      }
+      return { success: true as const, path, content: result.stdout };
+    },
+
+    async stop() {
+      await adapter.stop?.();
+    },
+  };
+}
+
+/** Standard mode: wraps commands in `agentsh exec` for policy enforcement. */
+function createAgentshSandbox(
+  adapter: SandboxAdapter,
+  sessionId: string,
+  securityMode: SecurityMode,
 ): SecuredSandbox {
   return {
     sessionId,

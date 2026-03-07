@@ -13,11 +13,11 @@ export async function secureSandbox(
   config?: SecureConfig,
 ): Promise<SecuredSandbox> {
   const resolvedConfig = config ?? {};
-  const { sessionId, securityMode } = await provision(adapter, {
+  const { sessionId, securityMode, passthrough } = await provision(adapter, {
     workspace: '/workspace',
     ...resolvedConfig,
   });
-  return createSecuredSandbox(adapter, sessionId, securityMode);
+  return createSecuredSandbox(adapter, sessionId, securityMode, { passthrough });
 }
 
 export async function createSandbox(

@@ -20,7 +20,7 @@ export type ReadFileResult =
 
 export type SecurityMode = 'full' | 'landlock' | 'landlock-only' | 'minimal';
 
-export type InstallStrategy = 'preinstalled' | 'download' | 'upload';
+export type InstallStrategy = 'preinstalled' | 'download' | 'upload' | 'running';
 
 // ─── SandboxAdapter interface ─────────────────────────────────
 
@@ -148,6 +148,9 @@ export interface SecureConfig {
    * - 'preinstalled': Binary already exists (snapshot or baked image).
    * - 'download': Download from GitHub releases inside the sandbox. Default.
    * - 'upload': Library downloads on host, uploads via adapter.writeFile().
+   * - 'running': agentsh is already fully provisioned and running.
+   *   Skips install, shim, policy, config, and server startup.
+   *   Only detects security mode, runs health check, and creates session.
    */
   installStrategy?: InstallStrategy;
 
@@ -194,6 +197,13 @@ export interface SecureConfig {
    * Format: '00-<trace-id>-<span-id>-<flags>'
    */
   traceParent?: string;
+
+  /**
+   * Policy name for session creation. Only used with installStrategy 'running'.
+   * Must match a policy file in the server's policy directory.
+   * Default: 'policy' (matches the file written by other install strategies).
+   */
+  policyName?: string;
 }
 
 export interface CreateSandboxConfig extends SecureConfig {

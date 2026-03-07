@@ -24,6 +24,7 @@ function createMockAdapter(
     install: ok(),
     'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
     'agentsh shim': ok(),
+    'echo $AGENTSH_SESSION_ID': ok('existing-session-456'),
     mkdir: ok(),
     find: ok(),
     chown: ok(),
@@ -288,5 +289,83 @@ describe('provision', () => {
     );
     expect(configCall).toBeDefined();
     expect(configCall![1]).toContain('watchtower.example.com');
+  });
+
+  // ─── 'running' install strategy ─────────────────────────────
+
+  it('running strategy reads existing session from env and returns passthrough', async () => {
+    const adapter = createMockAdapter();
+    const result = await provision(adapter, { installStrategy: 'running' });
+
+    expect(result.sessionId).toBe('existing-session-456');
+    expect(result.securityMode).toBe('full');
+    expect(result.passthrough).toBe(true);
+
+    const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
+
+    // Should NOT call install, shim, server start, or session create
+    const shimCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'agentsh' && args?.[0] === 'shim',
+    );
+    expect(shimCalls).toHaveLength(0);
+
+    const serverCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'agentsh' && args?.[0] === 'server',
+    );
+    expect(serverCalls).toHaveLength(0);
+
+    const sessionCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'agentsh' && args?.[0] === 'session',
+    );
+    expect(sessionCalls).toHaveLength(0);
+
+    // Should NOT write any files
+    expect(adapter.writeFile).not.toHaveBeenCalled();
+
+    // Should call detect and health check
+    const detectCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'agentsh' && args?.[0] === 'detect',
+    );
+    expect(detectCalls).toHaveLength(1);
+  });
+
+  it('running strategy throws when AGENTSH_SESSION_ID is not set', async () => {
+    const adapter = createMockAdapter({
+      'echo $AGENTSH_SESSION_ID': ok(''),
+    });
+
+    await expect(
+      provision(adapter, { installStrategy: 'running' }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('AGENTSH_SESSION_ID not set'),
+    });
+  });
+
+  it('running strategy still enforces minimum security mode', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'minimal' }), exitCode: 0 },
+    });
+
+    await expect(
+      provision(adapter, { installStrategy: 'running', minimumSecurityMode: 'full' }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("weaker than required 'full'"),
+    });
+  });
+
+  it('running strategy still performs health check', async () => {
+    const adapter = createMockAdapter();
+    await provision(adapter, { installStrategy: 'running' });
+
+    const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
+    const healthCalls = execCalls.filter(
+      ([cmd, args]: [string, string[]]) =>
+        cmd === 'curl' && args?.some((a: string) => a.includes('/health')),
+    );
+    expect(healthCalls.length).toBeGreaterThanOrEqual(1);
   });
 });
