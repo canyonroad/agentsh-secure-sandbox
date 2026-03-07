@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createRequire } from 'node:module';
 import { ENV } from './helpers.js';
 import { secureSandbox } from '../api.js';
 import { cloudflare } from '../adapters/cloudflare.js';
 import type { SecuredSandbox } from '../core/types.js';
 
-const require = createRequire(import.meta.url);
+// @cloudflare/sandbox requires a Workers runtime and cannot be imported in Node.js.
+// Gate on both the token AND a successful dynamic import probe.
 let sdkAvailable = false;
-try { require.resolve('@cloudflare/sandbox'); sdkAvailable = true; } catch {}
+try { await import('@cloudflare/sandbox'); sdkAvailable = true; } catch {}
 
 const canRun = !!ENV.CLOUDFLARE_API_TOKEN && sdkAvailable;
 
@@ -16,10 +16,10 @@ describe.skipIf(!canRun)('Cloudflare E2E', () => {
   let rawSandbox: any;
 
   beforeAll(async () => {
-    // Cloudflare containers require a Worker/Durable Object runtime context.
-    // This test assumes the SDK exposes a create/connect method.
-    const cf = await import('@cloudflare/sandbox');
-    rawSandbox = await (cf as any).Sandbox.create();
+    const { getSandbox } = await import('@cloudflare/sandbox');
+    // getSandbox requires a DurableObjectNamespace binding from Workers runtime.
+    // When running in a Cloudflare test environment, env.Sandbox would be provided.
+    rawSandbox = getSandbox((globalThis as any).env?.Sandbox, 'e2e-test');
 
     const adapter = cloudflare(rawSandbox);
     secured = await secureSandbox(adapter);
