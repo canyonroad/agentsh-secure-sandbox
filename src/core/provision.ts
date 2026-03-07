@@ -86,7 +86,7 @@ export async function provision(
     agentshChecksum,
     skipIntegrityCheck = false,
     minimumSecurityMode,
-    realPaths = false,
+    realPaths: realPathsOverride,
     enforceRedirects = false,
     traceParent,
     policyName = 'policy',
@@ -205,6 +205,11 @@ export async function provision(
       stderr: `Detected security mode '${securityMode}' is weaker than required '${minimumSecurityMode}'`,
     });
   }
+
+  // Auto-enable realPaths when FUSE is available (full or landlock modes),
+  // unless the user explicitly set it.
+  const hasFuse = securityMode === 'full' || securityMode === 'landlock';
+  const realPaths = realPathsOverride ?? hasFuse;
 
   // Step 6: Install shell shim
   const shimResult = await adapter.exec(

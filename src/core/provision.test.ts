@@ -291,6 +291,62 @@ describe('provision', () => {
     expect(configCall![1]).toContain('watchtower.example.com');
   });
 
+  it('auto-enables realPaths when security mode has FUSE (full)', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
+    });
+    await provision(adapter, {});
+
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const configCall = writeCalls.find(
+      ([path]: [string]) => path === '/etc/agentsh/config.yml',
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall![1]).toContain('real_paths');
+  });
+
+  it('auto-enables realPaths when security mode is landlock (FUSE)', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'landlock' }), exitCode: 0 },
+    });
+    await provision(adapter, {});
+
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const configCall = writeCalls.find(
+      ([path]: [string]) => path === '/etc/agentsh/config.yml',
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall![1]).toContain('real_paths');
+  });
+
+  it('does not auto-enable realPaths for minimal mode (no FUSE)', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'minimal' }), exitCode: 0 },
+    });
+    await provision(adapter, {});
+
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const configCall = writeCalls.find(
+      ([path]: [string]) => path === '/etc/agentsh/config.yml',
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall![1]).not.toContain('real_paths');
+  });
+
+  it('respects explicit realPaths=false even with FUSE', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
+    });
+    await provision(adapter, { realPaths: false });
+
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const configCall = writeCalls.find(
+      ([path]: [string]) => path === '/etc/agentsh/config.yml',
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall![1]).not.toContain('real_paths');
+  });
+
   // ─── 'running' install strategy ─────────────────────────────
 
   it('running strategy reads existing session from env and returns passthrough', async () => {

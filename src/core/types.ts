@@ -181,7 +181,9 @@ export interface SecureConfig {
 
   /**
    * Use real host paths instead of virtualizing under /workspace.
-   * Default: false (agentsh virtualizes under /workspace).
+   * Default: auto-detected. Enabled when FUSE is available (security
+   * mode 'full' or 'landlock'), disabled otherwise. Set explicitly
+   * to override auto-detection.
    */
   realPaths?: boolean;
 
