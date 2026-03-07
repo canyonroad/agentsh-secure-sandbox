@@ -424,4 +424,44 @@ describe('provision', () => {
     );
     expect(healthCalls.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('throws on unknown security mode from detect', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'unknown_mode' }), exitCode: 0 },
+    });
+
+    await expect(provision(adapter, {})).rejects.toMatchObject({
+      stderr: expect.stringContaining("Unknown security mode: 'unknown_mode'"),
+    });
+  });
+
+  it('upload strategy uploads tarball and extracts all binaries', async () => {
+    // Mock global fetch for upload strategy
+    const mockFetch = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    }));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = createMockAdapter();
+    const result = await provision(adapter, { installStrategy: 'upload' });
+
+    expect(result.sessionId).toBe('test-session-123');
+
+    // Should have written tarball via adapter.writeFile
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const tarballWrite = writeCalls.find(
+      ([path]: [string]) => path === '/tmp/agentsh.tar.gz',
+    );
+    expect(tarballWrite).toBeDefined();
+
+    // Should have called tar to extract
+    const execCalls = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls;
+    const tarCalls = execCalls.filter(
+      ([cmd]: [string]) => cmd === 'tar',
+    );
+    expect(tarCalls.length).toBeGreaterThanOrEqual(1);
+
+    vi.unstubAllGlobals();
+  });
 });

@@ -36,7 +36,7 @@ export function blaxel(sandbox: any): SandboxAdapter {
         waitForCompletion: true,
         timeout: 60,
       });
-      if (result.exitCode !== 0) {
+      if ((result.exitCode ?? 0) !== 0) {
         throw new Error(`writeFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
       }
     },
@@ -47,7 +47,7 @@ export function blaxel(sandbox: any): SandboxAdapter {
         waitForCompletion: true,
         timeout: 60,
       });
-      if (result.exitCode !== 0) {
+      if ((result.exitCode ?? 0) !== 0) {
         throw new Error(`readFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
       }
       return result.stdout ?? '';

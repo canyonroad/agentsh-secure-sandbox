@@ -157,6 +157,22 @@ describe('cloudflare adapter', () => {
     expect(mock.exec).toHaveBeenCalledWith(expect.stringContaining('cat'));
     expect(content).toBe('file content');
   });
+
+  it('writeFile throws on non-zero exit', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: 'permission denied', exitCode: 1 })),
+    };
+    const adapter = cloudflare(mock);
+    await expect(adapter.writeFile('/etc/test', 'data')).rejects.toThrow('writeFile failed');
+  });
+
+  it('readFile throws on non-zero exit', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: 'no such file', exitCode: 1 })),
+    };
+    const adapter = cloudflare(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
+  });
 });
 
 describe('blaxel adapter', () => {
@@ -230,6 +246,24 @@ describe('blaxel adapter', () => {
       expect.objectContaining({ command: expect.stringContaining('cat') }),
     );
     expect(content).toBe('file content');
+  });
+
+  it('writeFile throws on non-zero exit', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: '', stderr: 'permission denied', exitCode: 1 })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await expect(adapter.writeFile('/etc/test', 'data')).rejects.toThrow('writeFile failed');
+  });
+
+  it('readFile throws on non-zero exit', async () => {
+    const mock = {
+      process: { exec: vi.fn(async () => ({ stdout: '', stderr: 'no such file', exitCode: 1 })) },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
   });
 
   it('stop calls sandbox.delete', async () => {

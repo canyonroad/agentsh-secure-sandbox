@@ -25,14 +25,14 @@ export function cloudflare(sandbox: any): SandboxAdapter {
       const b64 = buf.toString('base64');
       const cmd = shellEscape('sh', ['-c', 'printf "%s" "$1" | base64 -d > "$2"', '_', b64, path]);
       const result = await sandbox.exec(cmd);
-      if (result.exitCode !== 0) {
+      if ((result.exitCode ?? 0) !== 0) {
         throw new Error(`writeFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
       }
     },
     async readFile(path) {
       const cmd = shellEscape('cat', [path]);
       const result = await sandbox.exec(cmd);
-      if (result.exitCode !== 0) {
+      if ((result.exitCode ?? 0) !== 0) {
         throw new Error(`readFile failed (exit ${result.exitCode}): ${result.stderr ?? ''}`);
       }
       return result.stdout ?? '';
