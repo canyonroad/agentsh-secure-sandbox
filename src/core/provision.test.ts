@@ -201,9 +201,11 @@ describe('provision', () => {
       'agentsh detect': ok(JSON.stringify({ mode: 'minimal' })),
     });
 
-    await expect(
-      provision(adapter, { minimumSecurityMode: 'full' }),
-    ).rejects.toMatchObject({
+    const p = provision(adapter, { minimumSecurityMode: 'full' });
+    await expect(p).rejects.toBeInstanceOf(ProvisioningError);
+
+    const p2 = provision(adapter, { minimumSecurityMode: 'full' });
+    await expect(p2).rejects.toMatchObject({
       stderr: expect.stringContaining("weaker than required 'full'"),
     });
   });
