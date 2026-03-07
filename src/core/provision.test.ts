@@ -203,9 +203,7 @@ describe('provision', () => {
 
     const p = provision(adapter, { minimumSecurityMode: 'full' });
     await expect(p).rejects.toBeInstanceOf(ProvisioningError);
-
-    const p2 = provision(adapter, { minimumSecurityMode: 'full' });
-    await expect(p2).rejects.toMatchObject({
+    await expect(p).rejects.toMatchObject({
       stderr: expect.stringContaining("weaker than required 'full'"),
     });
   });
