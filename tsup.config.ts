@@ -7,6 +7,7 @@ export default defineConfig({
     'src/adapters/vercel.ts',
     'src/adapters/e2b.ts',
     'src/adapters/daytona.ts',
+    'src/adapters/cloudflare.ts',
     'src/policies/index.ts',
     'src/testing/index.ts',
   ],

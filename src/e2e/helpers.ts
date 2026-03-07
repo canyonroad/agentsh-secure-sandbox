@@ -11,4 +11,5 @@ export const ENV = {
   E2B_API_KEY: process.env.E2B_API_KEY,
   DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
   DAYTONA_SERVER_URL: process.env.DAYTONA_SERVER_URL,
+  CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
 };

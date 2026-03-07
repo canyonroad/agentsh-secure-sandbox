@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { vercel } from './vercel.js';
 import { e2b } from './e2b.js';
 import { daytona } from './daytona.js';
+import { cloudflare } from './cloudflare.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -93,5 +94,66 @@ describe('daytona adapter', () => {
     const adapter = daytona(mock);
     await adapter.writeFile('/workspace/test.txt', 'hello');
     expect(mock.fs.uploadFile).toHaveBeenCalled();
+  });
+});
+
+describe('cloudflare adapter', () => {
+  it('maps exec to sandbox.exec with shell-escaped command', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: 'out', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    const result = await adapter.exec('echo', ['hello world']);
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringContaining('echo'),
+      expect.objectContaining({}),
+    );
+    expect(result.stdout).toBe('out');
+  });
+
+  it('prepends sudo to command', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringMatching(/^sudo /),
+      expect.anything(),
+    );
+  });
+
+  it('detached returns immediately with exitCode 0', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    const result = await adapter.exec('server', ['start'], { detached: true });
+    expect(result.exitCode).toBe(0);
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringContaining('nohup'),
+      expect.anything(),
+    );
+  });
+
+  it('writeFile uses exec-based base64 approach', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    await adapter.writeFile('/workspace/test.txt', 'hello');
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringContaining('base64'),
+    );
+  });
+
+  it('readFile uses exec-based cat', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: 'file content', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    const content = await adapter.readFile('/workspace/test.txt');
+    expect(mock.exec).toHaveBeenCalledWith(expect.stringContaining('cat'));
+    expect(content).toBe('file content');
   });
 });

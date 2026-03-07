@@ -23,6 +23,10 @@
       "types": "./dist/adapters/daytona.d.ts",
       "import": "./dist/adapters/daytona.js"
     },
+    "./adapters/cloudflare": {
+      "types": "./dist/adapters/cloudflare.d.ts",
+      "import": "./dist/adapters/cloudflare.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
@@ -57,6 +61,7 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
+    "@cloudflare/sandbox": "^0.1.0",
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
     "@vercel/sandbox": "^1.0.0"
@@ -66,6 +71,9 @@
       "optional": true
     },
     "@e2b/code-interpreter": {
+      "optional": true
+    },
+    "@cloudflare/sandbox": {
       "optional": true
     },
     "@daytonaio/sdk": {
