@@ -1,0 +1,63 @@
+{
+  "name": "@agentsh/secure-sandbox",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js"
+    },
+    "./adapters/vercel": {
+      "types": "./dist/adapters/vercel.d.ts",
+      "import": "./dist/adapters/vercel.js"
+    },
+    "./adapters/e2b": {
+      "types": "./dist/adapters/e2b.d.ts",
+      "import": "./dist/adapters/e2b.js"
+    },
+    "./adapters/daytona": {
+      "types": "./dist/adapters/daytona.d.ts",
+      "import": "./dist/adapters/daytona.js"
+    },
+    "./policies": {
+      "types": "./dist/policies/index.d.ts",
+      "import": "./dist/policies/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@vercel/sandbox": "^1.0.0",
+    "@e2b/code-interpreter": "^1.2.0",
+    "@daytonaio/sdk": "^0.12.0 || ^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@vercel/sandbox": { "optional": true },
+    "@e2b/code-interpreter": { "optional": true },
+    "@daytonaio/sdk": { "optional": true }
+  }
+}
