@@ -1,5 +1,5 @@
 // Main API functions
-export { secureSandbox, createSandbox } from './api.js';
+export { secureSandbox } from './api.js';
 
 // Core types
 export type {
@@ -9,7 +9,6 @@ export type {
   ReadFileResult,
   WriteFileResult,
   SecureConfig,
-  CreateSandboxConfig,
   SecurityMode,
   InstallStrategy,
   ThreatFeedsConfig,

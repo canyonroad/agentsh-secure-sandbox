@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { secureSandbox, createSandbox } from './api.js';
+import { secureSandbox } from './api.js';
 import type { SandboxAdapter } from './core/types.js';
-import { MissingPeerDependencyError } from './core/errors.js';
 
 // ─── Full mock adapter for end-to-end provisioning ──────────
 
@@ -84,18 +83,5 @@ describe('secureSandbox', () => {
     const lastExecCall = (adapter.exec as any).mock.calls.at(-1);
     expect(lastExecCall[0]).toBe('agentsh');
     expect(lastExecCall[1]).toContain('exec');
-  });
-});
-
-describe('createSandbox', () => {
-  it('throws MissingPeerDependencyError when @vercel/sandbox not installed', async () => {
-    // Mock the dynamic import to simulate missing package
-    vi.doMock('@vercel/sandbox', () => {
-      throw new Error('Cannot find module');
-    });
-    // Re-import api to pick up the mock
-    const { createSandbox: create } = await import('./api.js');
-    await expect(create()).rejects.toThrow(MissingPeerDependencyError);
-    vi.doUnmock('@vercel/sandbox');
   });
 });

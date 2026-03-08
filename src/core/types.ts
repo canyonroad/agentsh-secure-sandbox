@@ -236,17 +236,3 @@ export interface ThreatFeedsConfig {
   /** Domains to exclude from blocking (e.g. legitimate services that may appear in feeds). */
   allowlist?: string[];
 }
-
-export interface CreateSandboxConfig extends SecureConfig {
-  /** Vercel Sandbox runtime. Default: 'node24'. */
-  runtime?: 'node22' | 'node24' | 'python3.13';
-
-  /** Sandbox timeout in milliseconds. Default: 300_000 (5 min). */
-  timeout?: number;
-
-  /** Number of vCPUs. Default: 2. */
-  vcpus?: 1 | 2 | 4 | 8;
-
-  /** Create from existing snapshot ID (skips binary install). */
-  snapshot?: string;
-}

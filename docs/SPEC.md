@@ -72,8 +72,8 @@ TypeScript, validated with Zod at definition time, serialized to YAML,
 written as a root-owned read-only file inside the sandbox, and protected
 by agentsh's system policy layer. The agent cannot modify it at runtime.
 
-**P4 — Minimal surface.** The public API is two functions (`secureSandbox`,
-`createSandbox`), a set of adapters, a set of policy presets, and one
+**P4 — Minimal surface.** The public API is one function (`secureSandbox`),
+a set of adapters, a set of policy presets, and one
 interface (`SecuredSandbox`). That's it.
 
 **P5 — Version-pinned provider support.** Each adapter declares which
@@ -93,7 +93,7 @@ operations directly or to perform file I/O through provider-native APIs.
 
 ```
 @agentsh/secure-sandbox
-├── index.ts                 # Exports: secureSandbox, createSandbox, SecuredSandbox type
+├── index.ts                 # Exports: secureSandbox, SecuredSandbox type
 ├── adapters/
 │   ├── index.ts             # Re-exports all adapters
 │   ├── vercel.ts            # @vercel/sandbox adapter
@@ -329,44 +329,6 @@ interface SecureConfig {
 
 See Section 10 (Provisioning Sequence) for the full step-by-step flow.
 
-### 5.2 `createSandbox(config?)`
-
-Convenience function for Vercel Sandbox users. Creates the sandbox AND
-secures it in one call.
-
-```ts
-function createSandbox(
-  config?: CreateSandboxConfig,
-): Promise<SecuredSandbox>;
-
-interface CreateSandboxConfig extends SecureConfig {
-  /** Vercel Sandbox runtime. Default: 'node24'. */
-  runtime?: 'node22' | 'node24' | 'python3.13';
-
-  /** Sandbox timeout in milliseconds. Default: 300_000 (5 min). */
-  timeout?: number;
-
-  /** Number of vCPUs. Default: 2. */
-  vcpus?: 1 | 2 | 4 | 8;
-
-  /** Create from existing snapshot ID (skips binary install). */
-  snapshot?: string;
-}
-```
-
-Requires `@vercel/sandbox` to be installed. Throws
-`MissingPeerDependencyError` if not found.
-
-Equivalent to:
-
-```ts
-import { Sandbox } from '@vercel/sandbox';
-import { secureSandbox, adapters } from '@agentsh/secure-sandbox';
-
-const sandbox = await Sandbox.create({ runtime, timeout, vcpus, ... });
-return secureSandbox(adapters.vercel(sandbox), { policy, workspace, ... });
-```
-
 ---
 
 ## 6. SandboxAdapter Interface
@@ -577,7 +539,7 @@ const sandbox = await secureSandbox({
 
 ## 8. SecuredSandbox Interface
 
-The return type of `secureSandbox()` and `createSandbox()`. This is what
+The return type of `secureSandbox()`. This is what
 the developer's tools interact with at runtime.
 
 **Critical design decision:** At runtime, `SecuredSandbox` uses the adapter
@@ -1151,13 +1113,18 @@ PHASE 4 — HANDOFF
 
 ## 11. Snapshot Caching
 
-For `createSandbox()` (Vercel-specific), the library can automatically
-snapshot after first provisioning:
+For Vercel Sandbox, the developer can snapshot after first provisioning
+to skip binary install on subsequent calls:
 
 ```ts
-const sandbox = await createSandbox({
-  policy: policies.devSafe(),
-  // First call: full bootstrap. Library snapshots automatically.
+import { Sandbox } from '@vercel/sandbox';
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
+
+const raw = await Sandbox.create({ runtime: 'node24' });
+const sandbox = await secureSandbox(vercel(raw), {
+  policy: policies.agentDefault(),
+  // First call: full bootstrap. Snapshot the VM afterwards.
   // Subsequent calls: create from snapshot, only write policy + start server.
 });
 ```
@@ -1305,7 +1272,7 @@ Each integration test suite verifies:
 The library follows semver:
 
 - **Major:** Breaking changes to `SecuredSandbox`, `SandboxAdapter`,
-  `PolicyDefinition`, or `secureSandbox()` / `createSandbox()` signatures.
+  `PolicyDefinition`, or `secureSandbox()` signatures.
 - **Minor:** New adapters, new policy rule types, new preset policies,
   new optional fields on existing interfaces.
 - **Patch:** Bug fixes, agentsh version bumps, checksum updates, documentation.
@@ -1322,17 +1289,24 @@ with an updated adapter and an updated peer dependency range.
 ### 15.1 Minimal (Vercel, default policy)
 
 ```ts
-import { createSandbox } from '@agentsh/secure-sandbox';
-const sandbox = await createSandbox();
+import { Sandbox } from '@vercel/sandbox';
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
+
+const raw = await Sandbox.create({ runtime: 'node24' });
+const sandbox = await secureSandbox(vercel(raw));
 const result = await sandbox.exec('node -e "console.log(42)"');
 ```
 
 ### 15.2 Vercel with custom policy
 
 ```ts
-import { createSandbox } from '@agentsh/secure-sandbox';
+import { Sandbox } from '@vercel/sandbox';
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
 
-const sandbox = await createSandbox({
+const raw = await Sandbox.create({ runtime: 'node24' });
+const sandbox = await secureSandbox(vercel(raw), {
   policy: {
     file: [{ allow: '/workspace/**' }, { deny: '**/.env' }],
     network: [{ allow: ['registry.npmjs.org'] }, { deny: '*' }],
