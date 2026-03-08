@@ -94,13 +94,13 @@ Shell configuration files execute on every new shell session. An agent that writ
 - [MITRE ATT&CK T1574.007 — Path Interception by PATH Environment Variable](https://attack.mitre.org/techniques/T1574/007/)
 - [CVE-2024-32019](https://github.com/T1erno/CVE-2024-32019-Netdata-ndsudo-Privilege-Escalation-PoC) — Netdata privilege escalation via PATH hijacking
 
-### Deny agent config files
+### Deny writes to agent config files
 
 ```
-{ deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'] }
+{ deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'], ops: ['write', 'create', 'delete'] }
 ```
 
-These files are automatically loaded by AI coding tools (Cursor, Claude Code, GitHub Copilot) to provide project-specific instructions. A malicious repository can include a `.cursorrules` or `CLAUDE.md` file that instructs the agent to exfiltrate secrets, install backdoors, or modify code in subtle ways. This is the "Rules File Backdoor" attack.
+These files are automatically loaded by AI coding tools (Cursor, Claude Code, GitHub Copilot) to provide project-specific instructions. Reads are allowed so the agent can follow project conventions. Writes are blocked because a compromised agent can rewrite these files to inject prompts that persist across sessions — the "Rules File Backdoor" attack.
 
 - [CVE-2025-54135 (CurXecute)](https://nsfocusglobal.com/cursor-remote-code-execution-vulnerability-cve-2025-54135/) — Cursor RCE via prompt injection through config rewrite
 - [CVE-2025-53773](https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/) — GitHub Copilot RCE via prompt injection

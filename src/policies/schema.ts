@@ -13,7 +13,9 @@ const FileAllowRule = z
   .object({ allow: stringOrArray, ops: z.array(FileOpSchema).optional() })
   .strict();
 
-const FileDenyRule = z.object({ deny: stringOrArray }).strict();
+const FileDenyRule = z
+  .object({ deny: stringOrArray, ops: z.array(FileOpSchema).optional() })
+  .strict();
 
 const FileRedirectRule = z
   .object({

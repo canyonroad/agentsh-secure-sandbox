@@ -45,6 +45,15 @@ describe('serializePolicy', () => {
     expect(parsed.file_rules[0].decision).toBe('soft_delete');
   });
 
+  it('serializes file deny rule with ops', () => {
+    const result = serializePolicy({
+      file: [{ deny: '**/.cursorrules', ops: ['write', 'create'] }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.file_rules[0].decision).toBe('deny');
+    expect(parsed.file_rules[0].operations).toEqual(['write', 'create']);
+  });
+
   it('serializes command redirect with object target', () => {
     const result = serializePolicy({
       commands: [{ redirect: ['curl', 'wget'], to: { cmd: 'agentsh-fetch', args: ['--audit'] } }],

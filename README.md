@@ -73,15 +73,24 @@ AI coding agents run shell commands inside sandboxes. The sandbox isolates the h
 - **Force-pushing to git** and destroying repository history
 - **Rewriting `.cursorrules` or `CLAUDE.md`** to inject prompts into future sessions
 
-These aren't theoretical. They're documented attacks with CVEs:
+These aren't theoretical. They're documented attacks with CVEs across every major AI coding tool:
 
-| Attack | CVE / Source |
-|--------|-------------|
-| Command injection via `.env` files | [CVE-2025-61260](https://nvd.nist.gov/vuln/detail/CVE-2025-61260) (Codex CLI) |
-| Secret exfiltration via `secrets_from_env` | [CVE-2025-68664](https://cyata.ai/blog/langgrinch-langchain-core-cve-2025-68664/) (LangChain) |
-| RCE via agent config rewrite | [CVE-2025-54135](https://nsfocusglobal.com/cursor-remote-code-execution-vulnerability-cve-2025-54135/) (Cursor) |
-| RCE via prompt injection | [CVE-2025-53773](https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/) (Copilot) |
-| Prompt injection to RCE pipeline | [Trail of Bits](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/) |
+| Attack | CVE / Source | Tool |
+|--------|-------------|------|
+| Command injection via `.env` files | [CVE-2025-61260](https://research.checkpoint.com/2025/openai-codex-cli-command-injection-vulnerability/) | Codex CLI |
+| Secret exfiltration via serialization injection | [CVE-2025-68664](https://cyata.ai/blog/langgrinch-langchain-core-cve-2025-68664/) | LangChain |
+| RCE via MCP config rewrite | [CVE-2025-54135](https://www.aim.security/post/when-public-prompts-turn-into-local-shells-rce-in-cursor-via-mcp-auto-start) | Cursor |
+| RCE via prompt injection in repo comments | [CVE-2025-53773](https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/) | Copilot |
+| API key exfiltration via env var override | [CVE-2026-21852](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) | Claude Code |
+| RCE via hook config in untrusted repo | [CVE-2025-59536](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) | Claude Code |
+| Command injection bypass of allowlist | [CVE-2025-54795](https://cymulate.com/blog/cve-2025-547954-54795-claude-inverseprompt/) | Claude Code |
+| Sandbox escape via symlink traversal | [CVE-2025-53109](https://cymulate.com/blog/cve-2025-53109-53110-escaperoute-anthropic/) | MCP Filesystem |
+| Silent MCP server swap after approval | [CVE-2025-54136](https://research.checkpoint.com/2025/cursor-vulnerability-mcpoison/) | Cursor |
+| Case-sensitivity bypass of file protection | [CVE-2025-59944](https://www.lakera.ai/blog/cursor-vulnerability-cve-2025-59944) | Cursor |
+| Sandbox bypass + C2 installation | [Embrace The Red](https://embracethered.com/blog/posts/2025/devin-i-spent-usd500-to-hack-devin/) | Devin |
+| 30+ prompt injection to RCE across IDEs | [IDEsaster](https://maccarita.com/posts/idesaster/) | Cursor, Copilot, Windsurf, Roo, Junie |
+| Prompt injection to RCE pipeline | [Trail of Bits](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/) | Multiple |
+| Cross-agent privilege escalation loop | [Embrace The Red](https://embracethered.com/blog/posts/2025/cross-agent-privilege-escalation-agents-that-free-each-other/) | Copilot + Claude |
 
 Your sandbox provider gives you **isolation**. `@agentsh/secure-sandbox` gives you **governance**.
 
@@ -259,11 +268,13 @@ The default policy (`agentDefault`) is designed for AI coding agents. It allows 
 | Rule | Why |
 |------|-----|
 | Allow `/workspace/**` read/write/create | Agent needs to work with code |
-| Deny `.env`, `.env.*`, `*.pem`, `*.key` | [CVE-2025-61260](https://nvd.nist.gov/vuln/detail/CVE-2025-61260) — #1 exfiltration target |
+| Deny `.env`, `.env.*`, `*.pem`, `*.key` | [CVE-2025-61260](https://research.checkpoint.com/2025/openai-codex-cli-command-injection-vulnerability/) — #1 exfiltration target |
 | Deny `~/.ssh/**`, `/proc/*/environ` | SSH keys enable lateral movement; `/proc/*/environ` leaks all secrets |
 | Deny `~/.aws/**`, `~/.gcp/**`, `~/.azure/**` | Cloud credentials grant infrastructure access |
 | Deny `~/.bashrc`, `~/.zshrc`, `~/.profile` | [MITRE T1546.004](https://attack.mitre.org/techniques/T1546/004/) — shell persistence |
-| Deny `.cursorrules`, `CLAUDE.md` | [CVE-2025-54135](https://nsfocusglobal.com/cursor-remote-code-execution-vulnerability-cve-2025-54135/) — prompt injection via config files |
+| Deny writes to `.cursorrules`, `CLAUDE.md`, `.github/copilot-instructions.md` | [CVE-2025-54135](https://www.aim.security/post/when-public-prompts-turn-into-local-shells-rce-in-cursor-via-mcp-auto-start), [Rules File Backdoor](https://www.pillar.security/blog/new-vulnerability-in-github-copilot-and-cursor-how-hackers-can-weaponize-code-agents) — reads allowed (project context), writes blocked (prompt injection persistence) |
+| Deny `.cursor/mcp.json`, `.claude/` | [CVE-2025-54136](https://research.checkpoint.com/2025/cursor-vulnerability-mcpoison/), [CVE-2025-59536](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) — agent config rewrite for RCE |
+| Deny `.vscode/settings.json` | [CVE-2025-53773](https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/) — IDE settings modification enables auto-approve |
 | Deny `~/.local/bin/**` | [MITRE T1574.007](https://attack.mitre.org/techniques/T1574/007/) — PATH hijacking |
 
 ### Network Rules
@@ -271,18 +282,18 @@ The default policy (`agentDefault`) is designed for AI coding agents. It allows 
 | Rule | Why |
 |------|-----|
 | Allow `registry.npmjs.org`, `pypi.org`, `crates.io`, `github.com` (port 443) | Package installation and source access |
-| Deny everything else | Prevents data exfiltration, reverse shells, DNS tunneling |
+| Deny everything else | Prevents [data exfiltration](https://embracethered.com/blog/posts/2025/devin-can-leak-your-secrets/), reverse shells, C2 communication |
 
 ### Command Rules
 
 | Rule | Why |
 |------|-----|
 | Allow `bash`, `git`, `node`, `npm`, `python`, `cargo`, etc. | Standard dev workflow |
-| Deny `env`, `printenv` | Bulk secret enumeration |
+| Deny `env`, `printenv` | Bulk secret enumeration — [CVE-2026-21852](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) |
 | Deny `sudo`, `su`, `doas` | Privilege escalation |
-| Deny `nc`, `netcat`, `socat`, `telnet` | Reverse shells |
+| Deny `nc`, `netcat`, `socat`, `telnet` | [Reverse shells](https://embracethered.com/blog/posts/2025/devin-i-spent-usd500-to-hack-devin/) and C2 channels |
 | Deny `git push --force`, `git reset --hard` | Destructive git operations |
-| Redirect `curl`, `wget` → `agentsh-fetch --audit` | Audited HTTP with domain filtering |
+| Redirect `curl`, `wget` → `agentsh-fetch --audit` | Audited HTTP with domain filtering — prevents [exfiltration via curl](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/) |
 
 ## Policy Presets
 
@@ -390,9 +401,12 @@ expect(result.stdout).toBe('hello\n');
 
 - [Default Policy Documentation](docs/default-policy.md) — every rule explained with CVE citations
 - [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+- [IDEsaster — 30+ Vulnerabilities Across AI IDEs](https://maccarita.com/posts/idesaster/)
+- [Trail of Bits — Prompt Injection to RCE in AI Agents](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/)
+- [Embrace The Red — Cross-Agent Privilege Escalation](https://embracethered.com/blog/posts/2025/cross-agent-privilege-escalation-agents-that-free-each-other/)
+- [Check Point — RCE and API Token Exfiltration in Claude Code](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/)
 - [NVIDIA — Practical Security Guidance for Sandboxing Agentic Workflows](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/)
 - [Anthropic — Making Claude Code More Secure and Autonomous](https://www.anthropic.com/engineering/claude-code-sandboxing)
-- [Trail of Bits — Prompt Injection to RCE in AI Agents](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/)
 
 ## License
 

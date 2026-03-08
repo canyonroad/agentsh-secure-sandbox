@@ -27,8 +27,8 @@ export function agentDefault(
       { deny: ['~/.gitconfig', '~/.netrc', '~/.curlrc', '~/.wgetrc'] },
       // PATH hijacking
       { deny: '~/.local/bin/**' },
-      // Agent config files (prompt injection)
-      { deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'] },
+      // Agent config files — allow reads (project context), deny writes (prompt injection persistence)
+      { deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'], ops: ['write', 'create', 'delete'] },
     ],
     network: [
       {

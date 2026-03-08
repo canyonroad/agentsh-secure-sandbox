@@ -56,14 +56,20 @@ describe('presets', () => {
       expect(denyPaths).toContain('~/.zshrc');
     });
 
-    it('denies agent config files', () => {
+    it('denies writes to agent config files but allows reads', () => {
       const policy = agentDefault();
-      const denyPaths = policy.file!
-        .filter((r): r is { deny: string | string[] } => 'deny' in r)
-        .flatMap(r => Array.isArray(r.deny) ? r.deny : [r.deny]);
-      expect(denyPaths).toContain('**/.cursorrules');
-      expect(denyPaths).toContain('**/CLAUDE.md');
-      expect(denyPaths).toContain('**/copilot-instructions.md');
+      const agentConfigRule = policy.file!.find(
+        (r): r is { deny: string[]; ops: string[] } =>
+          'deny' in r && Array.isArray((r as any).deny) && (r as any).deny.includes('**/.cursorrules'),
+      ) as any;
+      expect(agentConfigRule).toBeDefined();
+      expect(agentConfigRule.deny).toContain('**/.cursorrules');
+      expect(agentConfigRule.deny).toContain('**/CLAUDE.md');
+      expect(agentConfigRule.deny).toContain('**/copilot-instructions.md');
+      expect(agentConfigRule.ops).toContain('write');
+      expect(agentConfigRule.ops).toContain('create');
+      expect(agentConfigRule.ops).toContain('delete');
+      expect(agentConfigRule.ops).not.toContain('read');
     });
 
     it('allows Go, Rust, and GitHub domains', () => {
