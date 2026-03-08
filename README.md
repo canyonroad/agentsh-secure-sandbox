@@ -38,7 +38,7 @@ const raw = await Sandbox.create({ runtime: 'node24' });
 const sandbox = await secureSandbox(adapters.vercel(raw));
 
 const { text } = await generateText({
-  model: anthropic('claude-sonnet-4-5-20250514'),
+  model: anthropic('claude-sonnet-4-6'),
   tools: {
     shell: tool({
       description: 'Run a shell command in the sandbox',
