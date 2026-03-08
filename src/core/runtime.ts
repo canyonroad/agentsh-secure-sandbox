@@ -5,6 +5,13 @@ import type {
   ExecResult,
 } from './types.js';
 import { RuntimeError } from './errors.js';
+import { getTraceparent } from './traceparent.js';
+
+/** Build env object with TRACEPARENT if an OTEL span is active. */
+async function traceEnv(): Promise<Record<string, string> | undefined> {
+  const tp = await getTraceparent();
+  return tp ? { TRACEPARENT: tp } : undefined;
+}
 
 /** Parse the JSON envelope from `agentsh exec --output json`. */
 function parseExecJson(raw: ExecResult): ExecResult {
@@ -113,7 +120,8 @@ function createAgentshSandbox(
         '-c',
         command,
       ];
-      const execOpts = opts?.cwd ? { cwd: opts.cwd } : undefined;
+      const env = await traceEnv();
+      const execOpts = { cwd: opts?.cwd, env };
       const result = await adapter.exec('agentsh', args, execOpts);
       if (isTransportFailure(result)) {
         throw new RuntimeError({
@@ -138,7 +146,8 @@ function createAgentshSandbox(
         b64,
         path,
       ];
-      const result = await adapter.exec('agentsh', args);
+      const env = await traceEnv();
+      const result = await adapter.exec('agentsh', args, { env });
       if (isTransportFailure(result)) {
         throw new RuntimeError({
           sessionId,
@@ -158,7 +167,8 @@ function createAgentshSandbox(
 
     async readFile(path) {
       const args = ['exec', sessionId, '--', 'cat', path];
-      const result = await adapter.exec('agentsh', args);
+      const env = await traceEnv();
+      const result = await adapter.exec('agentsh', args, { env });
       if (isTransportFailure(result)) {
         throw new RuntimeError({
           sessionId,

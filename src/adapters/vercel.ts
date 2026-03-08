@@ -10,6 +10,7 @@ export function vercel(sandbox: any): SandboxAdapter {
       if (opts?.cwd) params.cwd = opts.cwd;
       if (opts?.sudo) params.sudo = opts.sudo;
       if (opts?.detached) params.detached = opts.detached;
+      if (opts?.env) params.env = opts.env;
       const result = await sandbox.runCommand(params);
 
       // Detached processes return exitCode: null and stdout/stderr may hang

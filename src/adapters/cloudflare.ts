@@ -1,10 +1,10 @@
 import type { SandboxAdapter } from '../core/types.js';
-import { shellEscape } from '../core/shell.js';
+import { shellEscape, envPrefix } from '../core/shell.js';
 
 export function cloudflare(sandbox: any): SandboxAdapter {
   return {
     async exec(cmd, args, opts) {
-      let command = shellEscape(cmd, args);
+      let command = `${envPrefix(opts?.env)}${shellEscape(cmd, args)}`;
       // Cloudflare containers run as root — sudo is unnecessary and often
       // not installed.  Silently drop the flag so provisioning works.
       // (No-op: sudo requests are simply run directly as root.)

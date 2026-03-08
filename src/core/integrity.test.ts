@@ -9,15 +9,23 @@ import {
 } from './integrity.js';
 
 describe('CHECKSUMS', () => {
+  it('has checksums for pinned version linux_amd64', () => {
+    expect(CHECKSUMS[PINNED_VERSION]).toBeDefined();
+    expect(CHECKSUMS[PINNED_VERSION]['linux_amd64']).toBeDefined();
+  });
+
+  it('has checksums for pinned version linux_arm64', () => {
+    expect(CHECKSUMS[PINNED_VERSION]).toBeDefined();
+    expect(CHECKSUMS[PINNED_VERSION]['linux_arm64']).toBeDefined();
+  });
+
   it('has checksums for v0.14.0 linux_amd64', () => {
-    expect(CHECKSUMS['0.14.0']).toBeDefined();
     expect(CHECKSUMS['0.14.0']['linux_amd64']).toBe(
       '2ab8ba0d6637fe1a5badf840c3db197161a6f9865d721ed216029d229b1b9bbc',
     );
   });
 
   it('has checksums for v0.14.0 linux_arm64', () => {
-    expect(CHECKSUMS['0.14.0']).toBeDefined();
     expect(CHECKSUMS['0.14.0']['linux_arm64']).toBe(
       '929d18dd9fe36e9b2fa830d7ae64b4fb481853e743ade8674fcfcdc73470ed53',
     );
@@ -74,15 +82,15 @@ describe('buildVerifyCommand', () => {
 
 describe('binaryUrl', () => {
   it('returns default GitHub URL', () => {
-    const url = binaryUrl('0.14.0', 'linux_amd64');
+    const url = binaryUrl('0.15.0', 'linux_amd64');
     expect(url).toBe(
-      'https://github.com/canyonroad/agentsh/releases/download/v0.14.0/agentsh_0.14.0_linux_amd64.tar.gz',
+      'https://github.com/canyonroad/agentsh/releases/download/v0.15.0/agentsh_0.15.0_linux_amd64.tar.gz',
     );
   });
 
   it('returns override URL when provided', () => {
     const override = 'https://my-mirror.example.com/agentsh.tar.gz';
-    const url = binaryUrl('0.14.0', 'linux_amd64', override);
+    const url = binaryUrl('0.15.0', 'linux_amd64', override);
     expect(url).toBe(override);
   });
 });

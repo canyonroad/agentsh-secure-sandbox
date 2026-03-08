@@ -1,5 +1,5 @@
 import type { SandboxAdapter } from '../core/types.js';
-import { shellEscape } from '../core/shell.js';
+import { shellEscape, envPrefix } from '../core/shell.js';
 
 let stderrCounter = 0;
 
@@ -10,7 +10,7 @@ export function daytona(sandbox: any): SandboxAdapter {
       const stderrFile = `/tmp/_stderr_${id}_${Date.now()}`;
       const raw = shellEscape(cmd, args);
       const command = opts?.sudo ? `sudo ${raw}` : raw;
-      const wrappedCmd = `${command} 2>${stderrFile}; _exit=$?; cat ${stderrFile} >&2; rm -f ${stderrFile}; exit $_exit`;
+      const wrappedCmd = `${envPrefix(opts?.env)}${command} 2>${stderrFile}; _exit=$?; cat ${stderrFile} >&2; rm -f ${stderrFile}; exit $_exit`;
       try {
         if (opts?.detached) {
           sandbox.process.executeCommand(`nohup ${command} > /dev/null 2>&1 &`, opts?.cwd).catch(() => {});

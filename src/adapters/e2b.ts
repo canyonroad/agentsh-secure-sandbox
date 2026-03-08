@@ -1,10 +1,10 @@
 import type { SandboxAdapter } from '../core/types.js';
-import { shellEscape } from '../core/shell.js';
+import { shellEscape, envPrefix } from '../core/shell.js';
 
 export function e2b(sandbox: any): SandboxAdapter {
   return {
     async exec(cmd, args, opts) {
-      const command = shellEscape(cmd, args);
+      const command = `${envPrefix(opts?.env)}${shellEscape(cmd, args)}`;
       try {
         if (opts?.detached) {
           sandbox.commands.run(`nohup ${command} > /dev/null 2>&1 &`, {

@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.14.0',            // agentsh binary version
+  agentshVersion: '0.15.0',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
 });

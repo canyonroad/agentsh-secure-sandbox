@@ -41,6 +41,8 @@ export interface SandboxAdapter {
       sudo?: boolean;
       /** If true, don't wait for completion (for starting daemons). */
       detached?: boolean;
+      /** Environment variables to set for this command. */
+      env?: Record<string, string>;
     },
   ): Promise<ExecResult>;
 

@@ -1,10 +1,10 @@
 import type { SandboxAdapter } from '../core/types.js';
-import { shellEscape } from '../core/shell.js';
+import { shellEscape, envPrefix } from '../core/shell.js';
 
 export function blaxel(sandbox: any): SandboxAdapter {
   return {
     async exec(cmd, args, opts) {
-      let command = shellEscape(cmd, args);
+      let command = `${envPrefix(opts?.env)}${shellEscape(cmd, args)}`;
       if (opts?.sudo) command = `sudo ${command}`;
 
       const execOpts: Record<string, unknown> = {

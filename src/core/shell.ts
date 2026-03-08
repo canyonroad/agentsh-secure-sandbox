@@ -9,11 +9,25 @@
 /** A string is "safe" (no quoting needed) if it matches this pattern. */
 const SAFE_ARG = /^[a-zA-Z0-9._\-\/=:@]+$/;
 
+function quoteArg(arg: string): string {
+  if (SAFE_ARG.test(arg)) return arg;
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
 export function shellEscape(cmd: string, args?: string[]): string {
   if (!args || args.length === 0) return cmd;
-  const escaped = args.map((arg) => {
-    if (SAFE_ARG.test(arg)) return arg;
-    return "'" + arg.replace(/'/g, "'\\''") + "'";
-  });
+  const escaped = args.map(quoteArg);
   return [cmd, ...escaped].join(' ');
+}
+
+/**
+ * Convert env vars to inline shell assignments prefix.
+ * e.g. { TRACEPARENT: '00-abc-def-01' } → "TRACEPARENT='00-abc-def-01' "
+ * Returns empty string if env is undefined or empty.
+ */
+export function envPrefix(env?: Record<string, string>): string {
+  if (!env) return '';
+  const entries = Object.entries(env);
+  if (entries.length === 0) return '';
+  return entries.map(([k, v]) => `${k}=${quoteArg(v)}`).join(' ') + ' ';
 }

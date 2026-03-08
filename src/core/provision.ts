@@ -15,6 +15,7 @@ import { ProvisioningError, IntegrityError } from './errors.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { agentDefault } from '../policies/presets.js';
 import { validatePolicy } from '../policies/schema.js';
+import { getTraceparent } from './traceparent.js';
 
 // ─── Security mode ordering (strongest to weakest) ────────────
 
@@ -372,8 +373,9 @@ export async function provision(
     }
   }
 
-  // Step 13b: Set trace context if traceParent is provided
-  if (traceParent) {
+  // Step 13b: Set trace context if traceParent is provided or OTEL span is active
+  const effectiveTraceParent = traceParent ?? (await getTraceparent());
+  if (effectiveTraceParent) {
     await adapter.exec('curl', [
       '-X',
       'PUT',
@@ -381,7 +383,7 @@ export async function provision(
       '-H',
       'Content-Type: application/json',
       '-d',
-      JSON.stringify({ traceparent: traceParent }),
+      JSON.stringify({ traceparent: effectiveTraceParent }),
     ]);
   }
 

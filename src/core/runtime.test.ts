@@ -30,7 +30,7 @@ describe('SecuredSandbox', () => {
           '-c',
           'ls /workspace',
         ],
-        undefined,
+        expect.objectContaining({ cwd: undefined }),
       );
     });
 
@@ -93,6 +93,7 @@ describe('SecuredSandbox', () => {
       expect(adapter.exec).toHaveBeenCalledWith(
         'agentsh',
         expect.arrayContaining(['exec', 'sid-123']),
+        expect.objectContaining({}),
       );
     });
 
