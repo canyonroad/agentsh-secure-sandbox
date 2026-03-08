@@ -1,6 +1,10 @@
 {
   "name": "@agentsh/secure-sandbox",
   "version": "0.1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/canyonroad/agentsh-secure-sandbox"
+  },
   "type": "module",
   "exports": {
     ".": {
