@@ -114,28 +114,40 @@ await sandbox.stop();
 ### Vercel AI SDK
 
 ```typescript
+import { Sandbox } from '@vercel/sandbox';
 import { createSandbox } from '@agentsh/secure-sandbox';
 import { generateText, tool } from 'ai';
+import { z } from 'zod';
 
-const sandbox = await createSandbox();
+// Before — no protection:
+// const sandbox = await Sandbox.create({ runtime: 'node24' });
 
-const result = await generateText({
-  model: yourModel,
+// After — one-line replacement:
+const sandbox = await createSandbox({ runtime: 'node24' });
+
+const { text } = await generateText({
+  model: anthropic('claude-sonnet-4-5-20250514'),
   tools: {
-    execute: tool({
-      description: 'Run a shell command',
+    shell: tool({
+      description: 'Run a shell command in the sandbox',
       parameters: z.object({ command: z.string() }),
       execute: async ({ command }) => {
-        const { stdout, stderr, exitCode } = await sandbox.exec(command);
-        return { stdout, stderr, exitCode };
+        // Before — unprotected:
+        // const result = await sandbox.runCommand({ cmd: 'bash', args: ['-c', command] });
+
+        // After — every command is mediated by agentsh policy:
+        return sandbox.exec(command);
       },
     }),
   },
-  prompt: 'Install lodash and show its version',
+  maxSteps: 10,
+  prompt: 'Install express and create a hello world server in /workspace/app.js',
 });
 
 await sandbox.stop();
 ```
+
+`createSandbox()` is a drop-in replacement for `Sandbox.create()`. Same sandbox, same Firecracker VM — but now every command the agent runs goes through the policy engine. The agent can `npm install` and write code, but it can't read your `.env`, `curl` secrets out, or `sudo` its way to root.
 
 ### E2B
 
