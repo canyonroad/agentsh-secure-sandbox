@@ -112,14 +112,14 @@ describe('cloudflare adapter', () => {
     expect(result.stdout).toBe('out');
   });
 
-  it('prepends sudo to command', async () => {
+  it('drops sudo flag (container runs as root)', async () => {
     const mock = {
       exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
     };
     const adapter = cloudflare(mock);
     await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
     expect(mock.exec).toHaveBeenCalledWith(
-      expect.stringMatching(/^sudo /),
+      expect.stringMatching(/^chmod /),
       expect.anything(),
     );
   });

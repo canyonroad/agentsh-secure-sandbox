@@ -5,7 +5,9 @@ export function cloudflare(sandbox: any): SandboxAdapter {
   return {
     async exec(cmd, args, opts) {
       let command = shellEscape(cmd, args);
-      if (opts?.sudo) command = `sudo ${command}`;
+      // Cloudflare containers run as root — sudo is unnecessary and often
+      // not installed.  Silently drop the flag so provisioning works.
+      // (No-op: sudo requests are simply run directly as root.)
 
       if (opts?.detached) {
         // Fire-and-forget for daemon processes
