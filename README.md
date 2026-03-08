@@ -130,6 +130,32 @@ When you call `secureSandbox()`, the library:
 
 Enforcement happens at the **syscall level** — seccomp intercepts process execution, FUSE intercepts file I/O, and a network proxy filters outbound connections. There's no way for the agent to bypass it from userspace.
 
+## Threat Intelligence
+
+Out of the box, `secure-sandbox` blocks connections to known-malicious domains using two open source threat feeds:
+
+| Feed | Source | Updates |
+|------|--------|---------|
+| **URLhaus** | [abuse.ch](https://urlhaus.abuse.ch/) — malware distribution sites | Every 6 hours |
+| **Phishing.Database** | [mitchellkrogza/Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) — active phishing domains | Every 12 hours |
+
+This is enabled by default. Package registries (npm, PyPI, crates.io, GitHub) are allowlisted so they're never blocked even if they appear in a feed.
+
+```typescript
+// Disable threat feeds
+const sandbox = await secureSandbox(vercel(raw), { threatFeeds: false });
+
+// Use a custom feed
+const sandbox = await secureSandbox(vercel(raw), {
+  threatFeeds: {
+    action: 'deny',
+    feeds: [
+      { name: 'my-blocklist', url: 'https://example.com/domains.txt', format: 'domain-list', refreshInterval: '1h' },
+    ],
+  },
+});
+```
+
 ## Supported Platforms
 
 | Provider | seccomp | Landlock | FUSE | Network Proxy | DLP | Security Mode |

@@ -206,6 +206,35 @@ export interface SecureConfig {
    * Default: 'policy' (matches the file written by other install strategies).
    */
   policyName?: string;
+
+  /**
+   * Threat intelligence feeds for blocking known-malicious domains.
+   * Default: enabled with URLhaus and Phishing.Database feeds.
+   * Set to `false` to disable, or provide a custom ThreatFeedsConfig.
+   */
+  threatFeeds?: false | ThreatFeedsConfig;
+}
+
+// ─── Threat feeds configuration ──────────────────────────────
+
+export interface ThreatFeed {
+  /** Display name for this feed. */
+  name: string;
+  /** URL to fetch the feed from. */
+  url: string;
+  /** Feed format: 'hostfile' (hosts-style) or 'domain-list' (one domain per line). */
+  format: 'hostfile' | 'domain-list';
+  /** How often to refresh the feed. Default: '6h'. */
+  refreshInterval?: string;
+}
+
+export interface ThreatFeedsConfig {
+  /** Action to take when a domain matches a feed. Default: 'deny'. */
+  action?: 'deny' | 'audit';
+  /** Feed sources. */
+  feeds: ThreatFeed[];
+  /** Domains to exclude from blocking (e.g. legitimate services that may appear in feeds). */
+  allowlist?: string[];
 }
 
 export interface CreateSandboxConfig extends SecureConfig {

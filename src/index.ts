@@ -12,7 +12,12 @@ export type {
   CreateSandboxConfig,
   SecurityMode,
   InstallStrategy,
+  ThreatFeedsConfig,
+  ThreatFeed,
 } from './core/types.js';
+
+// Default threat feeds config
+export { defaultThreatFeeds } from './core/config.js';
 
 // Policy type
 export type { PolicyDefinition } from './policies/schema.js';
