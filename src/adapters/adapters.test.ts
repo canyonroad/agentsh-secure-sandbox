@@ -17,6 +17,18 @@ describe('vercel adapter', () => {
     expect(result.stdout).toBe('out');
   });
 
+  it('passes env vars in structured params', async () => {
+    const mock = {
+      runCommand: vi.fn(async () => ({ stdout: () => '', stderr: () => '', exitCode: 0 })),
+      writeFiles: vi.fn(), readFile: vi.fn(), stop: vi.fn(),
+    };
+    const adapter = vercel(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.runCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ env: { TRACEPARENT: '00-abc-def-01' } }),
+    );
+  });
+
   it('maps writeFile to sandbox.writeFiles', async () => {
     const mock = { runCommand: vi.fn(), writeFiles: vi.fn(async () => {}), readFile: vi.fn(), stop: vi.fn() };
     const adapter = vercel(mock);
@@ -73,6 +85,34 @@ describe('e2b adapter', () => {
     await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
     expect(mock.commands.run).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ user: 'root' }));
   });
+
+  it('includes env vars as inline prefix in command', async () => {
+    const mock = {
+      commands: { run: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })) },
+      files: { write: vi.fn(), read: vi.fn() },
+      kill: vi.fn(),
+    };
+    const adapter = e2b(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.commands.run).toHaveBeenCalledWith(
+      expect.stringContaining('TRACEPARENT=00-abc-def-01'),
+      expect.anything(),
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = {
+      commands: { run: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })) },
+      files: { write: vi.fn(), read: vi.fn() },
+      kill: vi.fn(),
+    };
+    const adapter = e2b(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    expect(mock.commands.run).toHaveBeenCalledWith(
+      expect.stringContaining('FOO=bar'),
+      expect.anything(),
+    );
+  });
 });
 
 describe('daytona adapter', () => {
@@ -95,6 +135,32 @@ describe('daytona adapter', () => {
     const adapter = daytona(mock);
     await adapter.writeFile('/workspace/test.txt', 'hello');
     expect(mock.fs.uploadFile).toHaveBeenCalled();
+  });
+
+  it('includes env vars in command', async () => {
+    const mock = {
+      process: { executeCommand: vi.fn(async () => ({ exitCode: 0, result: '' })) },
+      fs: { uploadFile: vi.fn(), downloadFile: vi.fn() },
+    };
+    const adapter = daytona(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.process.executeCommand).toHaveBeenCalledWith(
+      expect.stringContaining('TRACEPARENT=00-abc-def-01'),
+      undefined,
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = {
+      process: { executeCommand: vi.fn(async () => ({ exitCode: 0 })) },
+      fs: { uploadFile: vi.fn(), downloadFile: vi.fn() },
+    };
+    const adapter = daytona(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    expect(mock.process.executeCommand).toHaveBeenCalledWith(
+      expect.stringContaining('FOO=bar'),
+      undefined,
+    );
   });
 });
 
@@ -133,6 +199,30 @@ describe('cloudflare adapter', () => {
     expect(result.exitCode).toBe(0);
     expect(mock.exec).toHaveBeenCalledWith(
       expect.stringContaining('nohup'),
+      expect.anything(),
+    );
+  });
+
+  it('includes env vars in command', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringContaining('TRACEPARENT=00-abc-def-01'),
+      expect.anything(),
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = {
+      exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    };
+    const adapter = cloudflare(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.stringContaining('FOO=bar'),
       expect.anything(),
     );
   });
@@ -236,6 +326,34 @@ describe('blaxel adapter', () => {
     expect(result.exitCode).toBe(0);
     expect(mock.process.exec).toHaveBeenCalledWith(
       expect.objectContaining({ waitForCompletion: false }),
+    );
+  });
+
+  it('includes env vars in command', async () => {
+    const mock = {
+      process: {
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('TRACEPARENT=00-abc-def-01') }),
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = {
+      process: {
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      },
+      delete: vi.fn(),
+    };
+    const adapter = blaxel(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    expect(mock.process.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('FOO=bar') }),
     );
   });
 

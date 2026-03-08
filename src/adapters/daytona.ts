@@ -9,8 +9,9 @@ export function daytona(sandbox: any): SandboxAdapter {
       const id = ++stderrCounter;
       const stderrFile = `/tmp/_stderr_${id}_${Date.now()}`;
       const raw = shellEscape(cmd, args);
-      const command = opts?.sudo ? `sudo ${raw}` : raw;
-      const wrappedCmd = `${envPrefix(opts?.env)}${command} 2>${stderrFile}; _exit=$?; cat ${stderrFile} >&2; rm -f ${stderrFile}; exit $_exit`;
+      const baseCmd = opts?.sudo ? `sudo ${raw}` : raw;
+      const command = `${envPrefix(opts?.env)}${baseCmd}`;
+      const wrappedCmd = `${command} 2>${stderrFile}; _exit=$?; cat ${stderrFile} >&2; rm -f ${stderrFile}; exit $_exit`;
       try {
         if (opts?.detached) {
           sandbox.process.executeCommand(`nohup ${command} > /dev/null 2>&1 &`, opts?.cwd).catch(() => {});

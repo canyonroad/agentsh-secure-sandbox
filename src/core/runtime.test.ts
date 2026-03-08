@@ -3,6 +3,10 @@ import { createSecuredSandbox } from './runtime.js';
 import type { SandboxAdapter } from './types.js';
 import { RuntimeError } from './errors.js';
 
+vi.mock('./traceparent.js', () => ({
+  getTraceparent: vi.fn(async () => undefined),
+}));
+
 function createMockAdapter(): SandboxAdapter {
   return {
     exec: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
@@ -184,6 +188,41 @@ describe('SecuredSandbox', () => {
         'landlock',
       );
       expect(sandbox.securityMode).toBe('landlock');
+    });
+  });
+
+  describe('TRACEPARENT propagation', () => {
+    it('passes TRACEPARENT env when OTEL span is active', async () => {
+      const { getTraceparent } = await import('./traceparent.js');
+      (getTraceparent as ReturnType<typeof vi.fn>).mockResolvedValue(
+        '00-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6-1234567890abcdef-01',
+      );
+
+      const adapter = createMockAdapter();
+      const sandbox = createSecuredSandbox(adapter, 'sid-123', 'full');
+      await sandbox.exec('ls');
+
+      expect(adapter.exec).toHaveBeenCalledWith(
+        'agentsh',
+        expect.anything(),
+        expect.objectContaining({
+          env: { TRACEPARENT: '00-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6-1234567890abcdef-01' },
+        }),
+      );
+
+      (getTraceparent as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    });
+
+    it('does not include env when no OTEL span', async () => {
+      const adapter = createMockAdapter();
+      const sandbox = createSecuredSandbox(adapter, 'sid-123', 'full');
+      await sandbox.exec('ls');
+
+      expect(adapter.exec).toHaveBeenCalledWith(
+        'agentsh',
+        expect.anything(),
+        expect.objectContaining({ env: undefined }),
+      );
     });
   });
 });
