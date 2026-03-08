@@ -10,11 +10,11 @@ Wrap any sandbox with a single line:
 
 ```typescript
 import { Sandbox } from '@vercel/sandbox';
-import { secureSandbox } from '@agentsh/secure-sandbox';
-import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
+import { secureSandbox, adapters } from '@agentsh/secure-sandbox';
 
 const raw = await Sandbox.create({ runtime: 'node24' });
-const sandbox = await secureSandbox(vercel(raw)); // ← one line added
+// ← one line added
+const sandbox = await secureSandbox(adapters.vercel(raw));
 
 await sandbox.exec('echo hello');
 // ✓ allowed
@@ -30,13 +30,12 @@ Here's what that looks like in a full agent using the Vercel AI SDK:
 
 ```typescript
 import { Sandbox } from '@vercel/sandbox';
-import { secureSandbox } from '@agentsh/secure-sandbox';
-import { vercel } from '@agentsh/secure-sandbox/adapters/vercel';
+import { secureSandbox, adapters } from '@agentsh/secure-sandbox';
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 
 const raw = await Sandbox.create({ runtime: 'node24' });
-const sandbox = await secureSandbox(vercel(raw));
+const sandbox = await secureSandbox(adapters.vercel(raw));
 
 const { text } = await generateText({
   model: anthropic('claude-sonnet-4-5-20250514'),
@@ -60,7 +59,7 @@ const { text } = await generateText({
 await sandbox.stop();
 ```
 
-`secureSandbox(vercel(raw))` wraps your existing sandbox. Same Firecracker VM — but now every command goes through the [agentsh](https://www.agentsh.org) policy engine. The agent can `npm install` and write code, but it can't read your `.env`, `curl` secrets out, or `sudo` its way to root.
+`secureSandbox(adapters.vercel(raw))` wraps your existing sandbox. Same Firecracker VM — but now every command goes through the [agentsh](https://www.agentsh.org) policy engine. The agent can `npm install` and write code, but it can't read your `.env`, `curl` secrets out, or `sudo` its way to root.
 
 ## Why You Need This
 
@@ -118,23 +117,20 @@ Enforcement happens at the **syscall level** — seccomp intercepts process exec
 ```typescript
 // E2B
 import { Sandbox } from 'e2b';
-import { e2b } from '@agentsh/secure-sandbox/adapters/e2b';
-const sandbox = await secureSandbox(e2b(await Sandbox.create({ apiKey: process.env.E2B_API_KEY })));
+import { secureSandbox, adapters } from '@agentsh/secure-sandbox';
+const sandbox = await secureSandbox(adapters.e2b(await Sandbox.create({ apiKey: process.env.E2B_API_KEY })));
 
 // Daytona
 import { Daytona } from '@daytonaio/sdk';
-import { daytona } from '@agentsh/secure-sandbox/adapters/daytona';
-const sandbox = await secureSandbox(daytona(await new Daytona().create()));
+const sandbox = await secureSandbox(adapters.daytona(await new Daytona().create()));
 
 // Cloudflare Containers
 import { getSandbox } from '@cloudflare/sandbox';
-import { cloudflare } from '@agentsh/secure-sandbox/adapters/cloudflare';
-const sandbox = await secureSandbox(cloudflare(getSandbox(env.Sandbox, 'my-session')));
+const sandbox = await secureSandbox(adapters.cloudflare(getSandbox(env.Sandbox, 'my-session')));
 
 // Blaxel
 import { SandboxInstance } from '@blaxel/core';
-import { blaxel } from '@agentsh/secure-sandbox/adapters/blaxel';
-const sandbox = await secureSandbox(blaxel(await SandboxInstance.create({ name: 'my-sandbox' })));
+const sandbox = await secureSandbox(adapters.blaxel(await SandboxInstance.create({ name: 'my-sandbox' })));
 ```
 
 ## Default Policy
