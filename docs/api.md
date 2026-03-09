@@ -212,6 +212,7 @@ const sandbox = await secureSandbox(vercel(raw), { policy, packageChecks: {} });
 | `reasons` | `string[]` | Reasons to match (e.g. `['typosquat']`) |
 | `licenseSpdx` | `{ allow?: string[]; deny?: string[] }` | SPDX license criteria |
 | `ecosystem` | `string` | Package ecosystem (e.g. `'npm'`, `'pip'`) |
+| `options` | `Record<string, unknown>` | Additional match options |
 
 ## Custom Adapter
 
