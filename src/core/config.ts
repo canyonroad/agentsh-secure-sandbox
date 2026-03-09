@@ -1,10 +1,11 @@
 import yaml from 'js-yaml';
-import type { ThreatFeedsConfig } from './types.js';
+import type { ThreatFeedsConfig, PackageChecksConfig, ProviderConfig } from './types.js';
 
 export interface ServerConfigOpts {
   watchtower?: string;
   realPaths?: boolean;
   threatFeeds?: false | ThreatFeedsConfig;
+  packageChecks?: false | PackageChecksConfig;
 }
 
 /**
@@ -41,6 +42,31 @@ export const defaultThreatFeeds: ThreatFeedsConfig = {
     'sum.golang.org',
   ],
 };
+
+/**
+ * Default package check providers: local, osv, depsdev.
+ * All are free and require no API key.
+ */
+export const defaultPackageCheckProviders: Record<string, { enabled: boolean; priority: number }> = {
+  local: { enabled: true, priority: 0 },
+  osv: { enabled: true, priority: 1 },
+  depsdev: { enabled: true, priority: 2 },
+};
+
+/**
+ * Convert a camelCase ProviderConfig key to snake_case.
+ */
+function providerConfigToSnakeCase(config: ProviderConfig): Record<string, unknown> {
+  const result: Record<string, unknown> = { enabled: config.enabled ?? true };
+  if (config.priority !== undefined) result.priority = config.priority;
+  if (config.timeout !== undefined) result.timeout = config.timeout;
+  if (config.onFailure !== undefined) result.on_failure = config.onFailure;
+  if (config.apiKeyEnv !== undefined) result.api_key_env = config.apiKeyEnv;
+  if (config.type !== undefined) result.type = config.type;
+  if (config.command !== undefined) result.command = config.command;
+  if (config.options !== undefined) result.options = config.options;
+  return result;
+}
 
 export function generateServerConfig(opts: ServerConfigOpts): string {
   const config: Record<string, unknown> = {
@@ -81,6 +107,38 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         refresh_interval: f.refreshInterval ?? '6h',
       })),
       ...(feeds.allowlist?.length ? { allowlist: feeds.allowlist } : {}),
+    };
+  }
+
+  // Package checks: disabled by default, opt-in with `packageChecks: {}`
+  if (opts.packageChecks) {
+    const pc = opts.packageChecks;
+    const providers: Record<string, Record<string, unknown>> = {};
+
+    // Start with defaults
+    for (const [name, def] of Object.entries(defaultPackageCheckProviders)) {
+      providers[name] = { ...def };
+    }
+
+    // Merge user-provided providers
+    if (pc.providers) {
+      for (const [name, value] of Object.entries(pc.providers)) {
+        if (value === false) {
+          providers[name] = { enabled: false };
+        } else if (value === true) {
+          providers[name] = { enabled: true };
+        } else {
+          // ProviderConfig object — merge with existing default if present
+          const base = providers[name] ?? {};
+          providers[name] = { ...base, ...providerConfigToSnakeCase(value) };
+        }
+      }
+    }
+
+    config.package_checks = {
+      enabled: true,
+      scope: pc.scope ?? 'new_packages_only',
+      providers,
     };
   }
 

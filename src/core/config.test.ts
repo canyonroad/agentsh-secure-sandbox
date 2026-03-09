@@ -82,6 +82,123 @@ describe('generateServerConfig', () => {
   });
 });
 
+describe('generateServerConfig — packageChecks', () => {
+  it('omits package_checks when not specified (disabled by default)', () => {
+    const result = generateServerConfig({ workspace: '/workspace' });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks).toBeUndefined();
+  });
+
+  it('omits package_checks when set to false', () => {
+    const result = generateServerConfig({ workspace: '/workspace', packageChecks: false });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks).toBeUndefined();
+  });
+
+  it('produces package_checks with defaults when set to empty object', () => {
+    const result = generateServerConfig({ workspace: '/workspace', packageChecks: {} });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.enabled).toBe(true);
+    expect(parsed.package_checks.scope).toBe('new_packages_only');
+    expect(parsed.package_checks.providers.local).toEqual({ enabled: true, priority: 0 });
+    expect(parsed.package_checks.providers.osv).toEqual({ enabled: true, priority: 1 });
+    expect(parsed.package_checks.providers.depsdev).toEqual({ enabled: true, priority: 2 });
+  });
+
+  it('serializes custom scope correctly', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: { scope: 'all_installs' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.scope).toBe('all_installs');
+  });
+
+  it('adds socket alongside defaults when providers: { socket: true }', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: { providers: { socket: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.providers.socket).toEqual({ enabled: true });
+    // defaults still present
+    expect(parsed.package_checks.providers.local).toEqual({ enabled: true, priority: 0 });
+    expect(parsed.package_checks.providers.osv).toEqual({ enabled: true, priority: 1 });
+    expect(parsed.package_checks.providers.depsdev).toEqual({ enabled: true, priority: 2 });
+  });
+
+  it('serializes provider config with snake_case keys', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: {
+        providers: { socket: { apiKeyEnv: 'SOCKET_KEY', onFailure: 'warn' } },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.providers.socket.enabled).toBe(true);
+    expect(parsed.package_checks.providers.socket.api_key_env).toBe('SOCKET_KEY');
+    expect(parsed.package_checks.providers.socket.on_failure).toBe('warn');
+    // camelCase keys should NOT be present
+    expect(parsed.package_checks.providers.socket.apiKeyEnv).toBeUndefined();
+    expect(parsed.package_checks.providers.socket.onFailure).toBeUndefined();
+  });
+
+  it('disables a default provider when set to false', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: { providers: { osv: false } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.providers.osv).toEqual({ enabled: false });
+    // other defaults still present
+    expect(parsed.package_checks.providers.local).toEqual({ enabled: true, priority: 0 });
+    expect(parsed.package_checks.providers.depsdev).toEqual({ enabled: true, priority: 2 });
+  });
+
+  it('serializes all ProviderConfig fields to snake_case', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: {
+        providers: {
+          custom: {
+            enabled: true,
+            priority: 5,
+            timeout: '30s',
+            onFailure: 'deny',
+            apiKeyEnv: 'CUSTOM_KEY',
+            type: 'exec',
+            command: '/usr/bin/custom-check',
+            options: { verbose: true },
+          },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    const custom = parsed.package_checks.providers.custom;
+    expect(custom.enabled).toBe(true);
+    expect(custom.priority).toBe(5);
+    expect(custom.timeout).toBe('30s');
+    expect(custom.on_failure).toBe('deny');
+    expect(custom.api_key_env).toBe('CUSTOM_KEY');
+    expect(custom.type).toBe('exec');
+    expect(custom.command).toBe('/usr/bin/custom-check');
+    expect(custom.options).toEqual({ verbose: true });
+  });
+
+  it('overrides default provider config when user provides full config', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: {
+        providers: { osv: { priority: 10, timeout: '60s' } },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.providers.osv.enabled).toBe(true);
+    expect(parsed.package_checks.providers.osv.priority).toBe(10);
+    expect(parsed.package_checks.providers.osv.timeout).toBe('60s');
+  });
+});
+
 describe('defaultThreatFeeds', () => {
   it('has urlhaus and phishing feeds', () => {
     expect(defaultThreatFeeds.feeds).toHaveLength(2);

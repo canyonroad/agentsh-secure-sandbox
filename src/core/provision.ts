@@ -91,6 +91,7 @@ export async function provision(
     traceParent,
     policyName = 'policy',
     threatFeeds,
+    packageChecks,
   } = config;
 
   // Resolve and validate policy
@@ -276,6 +277,7 @@ export async function provision(
     watchtower,
     realPaths,
     threatFeeds,
+    packageChecks,
   });
 
   await adapter.writeFile('/etc/agentsh/config.yml', serverConfig, {
