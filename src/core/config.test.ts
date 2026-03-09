@@ -185,6 +185,15 @@ describe('generateServerConfig — packageChecks', () => {
     expect(custom.options).toEqual({ verbose: true });
   });
 
+  it('preserves default priority when a default provider is set to true', () => {
+    const result = generateServerConfig({
+      workspace: '/workspace',
+      packageChecks: { providers: { osv: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_checks.providers.osv).toEqual({ enabled: true, priority: 1 });
+  });
+
   it('overrides default provider config when user provides full config', () => {
     const result = generateServerConfig({
       workspace: '/workspace',

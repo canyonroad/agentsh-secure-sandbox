@@ -126,7 +126,7 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         if (value === false) {
           providers[name] = { enabled: false };
         } else if (value === true) {
-          providers[name] = { enabled: true };
+          providers[name] = { ...(providers[name] ?? {}), enabled: true };
         } else {
           // ProviderConfig object — merge with existing default if present
           const base = providers[name] ?? {};
