@@ -151,8 +151,9 @@ export interface SecureConfig {
    * - 'download': Download from GitHub releases inside the sandbox. Default.
    * - 'upload': Library downloads on host, uploads via adapter.writeFile().
    * - 'running': agentsh is already fully provisioned and running.
-   *   Skips install, shim, policy, config, and server startup.
-   *   Only detects security mode, runs health check, and creates session.
+   *   Skips install, shim, policy, config, server startup, and security
+   *   detection. Defaults securityMode to 'full' (override via securityMode).
+   *   Runs health check and reads the existing session from the environment.
    */
   installStrategy?: InstallStrategy;
 
@@ -173,6 +174,13 @@ export interface SecureConfig {
    * Only use if you are providing your own binary via a trusted channel.
    */
   skipIntegrityCheck?: boolean;
+
+  /**
+   * Override the detected security mode. Only used with installStrategy 'running',
+   * where `agentsh detect` is skipped (it would conflict with the running server).
+   * Default for 'running': 'full'. Ignored for other install strategies.
+   */
+  securityMode?: SecurityMode;
 
   /**
    * Minimum acceptable security mode. If `agentsh detect` reports a
@@ -208,6 +216,13 @@ export interface SecureConfig {
    * Default: 'policy' (matches the file written by other install strategies).
    */
   policyName?: string;
+
+  /**
+   * Existing agentsh session ID. Only used with installStrategy 'running'.
+   * If not provided, reads $AGENTSH_SESSION_ID from the sandbox environment.
+   * Use this when the sandbox exec API doesn't inherit shell profile env vars.
+   */
+  sessionId?: string;
 
   /**
    * Threat intelligence feeds for blocking known-malicious domains.

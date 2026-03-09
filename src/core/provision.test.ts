@@ -381,12 +381,12 @@ describe('provision', () => {
     // Should NOT write any files
     expect(adapter.writeFile).not.toHaveBeenCalled();
 
-    // Should call detect and health check
+    // Should NOT call detect (skipped for 'running' strategy)
     const detectCalls = execCalls.filter(
       ([cmd, args]: [string, string[]]) =>
         cmd === 'agentsh' && args?.[0] === 'detect',
     );
-    expect(detectCalls).toHaveLength(1);
+    expect(detectCalls).toHaveLength(0);
   });
 
   it('running strategy throws when AGENTSH_SESSION_ID is not set', async () => {
@@ -402,15 +402,41 @@ describe('provision', () => {
   });
 
   it('running strategy still enforces minimum security mode', async () => {
-    const adapter = createMockAdapter({
-      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'minimal' }), exitCode: 0 },
-    });
+    const adapter = createMockAdapter();
 
     await expect(
-      provision(adapter, { installStrategy: 'running', minimumSecurityMode: 'full' }),
+      provision(adapter, {
+        installStrategy: 'running',
+        securityMode: 'minimal',
+        minimumSecurityMode: 'full',
+      }),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining("weaker than required 'full'"),
     });
+  });
+
+  it('running strategy respects securityMode override', async () => {
+    const adapter = createMockAdapter();
+    const result = await provision(adapter, {
+      installStrategy: 'running',
+      securityMode: 'landlock',
+    });
+
+    expect(result.securityMode).toBe('landlock');
+    expect(result.passthrough).toBe(true);
+  });
+
+  it('running strategy respects sessionId override', async () => {
+    const adapter = createMockAdapter({
+      'echo $AGENTSH_SESSION_ID': ok(''),  // env var not set
+    });
+    const result = await provision(adapter, {
+      installStrategy: 'running',
+      sessionId: 'explicit-session-789',
+    });
+
+    expect(result.sessionId).toBe('explicit-session-789');
+    expect(result.passthrough).toBe(true);
   });
 
   it('running strategy still performs health check', async () => {

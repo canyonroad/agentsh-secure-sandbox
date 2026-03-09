@@ -24,6 +24,8 @@ const sandbox = await secureSandbox(adapter, {
 | `installStrategy` | `string` | `'download'` | How to install the agentsh binary in the sandbox |
 | `agentshVersion` | `string` | Latest | Pin a specific agentsh version |
 | `minimumSecurityMode` | `SecurityMode` | `undefined` | Fail if the sandbox kernel can't enforce at least this level |
+| `securityMode` | `SecurityMode` | `undefined` | Override detected security mode. Only used with `'running'` strategy (defaults to `'full'`). |
+| `sessionId` | `string` | `undefined` | Existing agentsh session ID. Only used with `'running'` strategy. Falls back to `$AGENTSH_SESSION_ID`. |
 | `threatFeeds` | `boolean \| ThreatFeedConfig` | `true` | Threat intelligence feed configuration |
 
 ### Install Strategies

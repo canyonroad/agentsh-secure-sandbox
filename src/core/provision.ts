@@ -105,21 +105,30 @@ export async function provision(
     // create a new session (which would deadlock the server via nested
     // agentsh connections). Instead, read the existing session ID from
     // the environment and use passthrough mode at runtime.
-    securityMode = await detectSecurityMode(adapter);
+    //
+    // Skip detectSecurityMode() — running `agentsh detect` inside a sandbox
+    // where the shell shim is already installed would route the command
+    // through agentsh's exec API, causing the server to try binding port
+    // 18080 again ("address already in use"). Default to 'full' since
+    // pre-provisioned environments typically have full capabilities.
+    await healthCheck(adapter);
+
+    securityMode = config.securityMode ?? 'full';
 
     if (minimumSecurityMode && isWeakerThan(securityMode, minimumSecurityMode)) {
       throw new ProvisioningError({
         phase: 'install',
-        command: 'agentsh detect --output json',
-        stderr: `Detected security mode '${securityMode}' is weaker than required '${minimumSecurityMode}'`,
+        command: 'securityMode check',
+        stderr: `Security mode '${securityMode}' is weaker than required '${minimumSecurityMode}'`,
       });
     }
 
-    await healthCheck(adapter);
-
-    // Read the existing session ID from the environment
-    const envResult = await adapter.exec('sh', ['-c', 'echo $AGENTSH_SESSION_ID']);
-    const sessionId = envResult.stdout.trim();
+    // Read the existing session ID from config or from the environment
+    let sessionId = config.sessionId;
+    if (!sessionId) {
+      const envResult = await adapter.exec('sh', ['-c', 'echo $AGENTSH_SESSION_ID']);
+      sessionId = envResult.stdout.trim();
+    }
     if (!sessionId) {
       throw new ProvisioningError({
         phase: 'session',
