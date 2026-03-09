@@ -113,15 +113,14 @@ export function agentDefault(
         action: 'block',
         reason: 'Copyleft license incompatible with proprietary code',
       },
-      // Package too new (<30 days) = approve
+      // Package too new = approve (requires human confirmation)
       {
         match: {
           findingType: 'reputation',
           reasons: ['package_too_new'],
-          options: { maxAgeDays: 30 },
         },
         action: 'approve',
-        reason: 'Package published < 30 days ago',
+        reason: 'Package published recently — requires approval',
       },
     ],
   };

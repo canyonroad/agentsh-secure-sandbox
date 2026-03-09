@@ -160,14 +160,13 @@ describe('presets', () => {
         expect(rule!.match.licenseSpdx?.deny).toEqual(['AGPL-3.0-only', 'SSPL-1.0']);
       });
 
-      it('approves packages newer than 30 days (package_too_new)', () => {
+      it('approves new packages (package_too_new)', () => {
         const policy = agentDefault();
         const rule = policy.packageRules!.find(
           r => r.match.reasons?.includes('package_too_new'),
         );
         expect(rule).toBeDefined();
         expect(rule!.action).toBe('approve');
-        expect(rule!.match.options).toEqual({ maxAgeDays: 30 });
       });
 
       it('validates against PolicyDefinitionSchema with packageRules', () => {
