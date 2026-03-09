@@ -7,6 +7,7 @@ import type {
   EnvRule,
   DnsRedirect,
   ConnectRedirect,
+  PackageRule,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -171,6 +172,52 @@ function serializeConnectRedirects(
   }));
 }
 
+// ─── Package rules ───────────────────────────────────────────
+
+function serializePackageRules(
+  rules: PackageRule[],
+): Record<string, unknown>[] {
+  return rules.map((rule) => {
+    const match: Record<string, unknown> = {};
+
+    if (rule.match.packages) {
+      match.packages = rule.match.packages;
+    }
+    if (rule.match.namePatterns) {
+      match.name_patterns = rule.match.namePatterns;
+    }
+    if (rule.match.findingType) {
+      match.finding_type = rule.match.findingType;
+    }
+    if (rule.match.severity !== undefined) {
+      match.severity = rule.match.severity;
+    }
+    if (rule.match.reasons) {
+      match.reasons = rule.match.reasons;
+    }
+    if (rule.match.licenseSpdx) {
+      match.license_spdx = rule.match.licenseSpdx;
+    }
+    if (rule.match.ecosystem) {
+      match.ecosystem = rule.match.ecosystem;
+    }
+    if (rule.match.options) {
+      match.options = rule.match.options;
+    }
+
+    const out: Record<string, unknown> = {
+      match,
+      action: rule.action,
+    };
+
+    if (rule.reason) {
+      out.reason = rule.reason;
+    }
+
+    return out;
+  });
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 /**
@@ -206,6 +253,10 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.connect && policy.connect.length > 0) {
     doc.connect_redirects = serializeConnectRedirects(policy.connect);
+  }
+
+  if (policy.packageRules && policy.packageRules.length > 0) {
+    doc.package_rules = serializePackageRules(policy.packageRules);
   }
 
   return yaml.dump(doc, { lineWidth: -1 });

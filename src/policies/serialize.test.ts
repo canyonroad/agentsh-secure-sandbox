@@ -130,6 +130,192 @@ describe('serializePolicy', () => {
     expect(parsed.network_rules.length).toBeGreaterThan(0);
     expect(parsed.command_rules.length).toBeGreaterThan(0);
   });
+
+  // ─── Package rules ──────────────────────────────────────────
+
+  it('serializes a basic package rule with match and action', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules).toHaveLength(1);
+    expect(parsed.package_rules[0].match.finding_type).toBe('malware');
+    expect(parsed.package_rules[0].action).toBe('block');
+  });
+
+  it('maps camelCase PackageMatch fields to snake_case', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: {
+            namePatterns: ['lodash.*'],
+            findingType: 'vulnerability',
+            licenseSpdx: { allow: ['MIT', 'Apache-2.0'] },
+          },
+          action: 'warn',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const match = parsed.package_rules[0].match;
+    expect(match.name_patterns).toEqual(['lodash.*']);
+    expect(match.finding_type).toBe('vulnerability');
+    expect(match.license_spdx).toEqual({ allow: ['MIT', 'Apache-2.0'] });
+    // Ensure camelCase keys are NOT in YAML output
+    expect(match.namePatterns).toBeUndefined();
+    expect(match.findingType).toBeUndefined();
+    expect(match.licenseSpdx).toBeUndefined();
+  });
+
+  it('serializes package rule with optional reason', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: { findingType: 'malware' },
+          action: 'block',
+          reason: 'Malware is never acceptable',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].reason).toBe('Malware is never acceptable');
+  });
+
+  it('omits reason when not provided', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].reason).toBeUndefined();
+  });
+
+  it('serializes severity as a single string', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { severity: 'critical' }, action: 'block' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].match.severity).toBe('critical');
+  });
+
+  it('serializes severity as a string array', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { severity: ['critical', 'high'] }, action: 'block' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].match.severity).toEqual(['critical', 'high']);
+  });
+
+  it('serializes licenseSpdx with deny list', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: { licenseSpdx: { deny: ['GPL-3.0', 'AGPL-3.0'] } },
+          action: 'block',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].match.license_spdx).toEqual({
+      deny: ['GPL-3.0', 'AGPL-3.0'],
+    });
+  });
+
+  it('serializes package rule with packages list', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: { packages: ['event-stream', 'ua-parser-js'] },
+          action: 'block',
+          reason: 'Known compromised packages',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].match.packages).toEqual([
+      'event-stream',
+      'ua-parser-js',
+    ]);
+  });
+
+  it('serializes package rule with ecosystem and options', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: {
+            ecosystem: 'npm',
+            options: { maxAge: 30, requireLicense: true },
+          },
+          action: 'warn',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const match = parsed.package_rules[0].match;
+    expect(match.ecosystem).toBe('npm');
+    expect(match.options).toEqual({ maxAge: 30, requireLicense: true });
+  });
+
+  it('serializes package rule with reasons', () => {
+    const result = serializePolicy({
+      packageRules: [
+        {
+          match: { reasons: ['abandoned', 'typosquat'] },
+          action: 'block',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules[0].match.reasons).toEqual([
+      'abandoned',
+      'typosquat',
+    ]);
+  });
+
+  it('serializes multiple package rules', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+        { match: { severity: 'critical' }, action: 'block' },
+        { match: { severity: 'low' }, action: 'allow' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules).toHaveLength(3);
+    expect(parsed.package_rules[0].action).toBe('block');
+    expect(parsed.package_rules[1].action).toBe('block');
+    expect(parsed.package_rules[2].action).toBe('allow');
+  });
+
+  it('omits package_rules when packageRules is empty', () => {
+    const result = serializePolicy({ packageRules: [] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules).toBeUndefined();
+  });
+
+  it('omits package_rules when packageRules is not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.package_rules).toBeUndefined();
+  });
+
+  it('only includes provided match fields (no undefined keys)', () => {
+    const result = serializePolicy({
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const matchKeys = Object.keys(parsed.package_rules[0].match);
+    expect(matchKeys).toEqual(['finding_type']);
+  });
 });
 
 describe('systemPolicyYaml', () => {
