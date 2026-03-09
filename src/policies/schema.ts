@@ -107,6 +107,36 @@ export const ConnectRedirectSchema = z
   })
   .strict();
 
+// ─── Package rules ──────────────────────────────────────────
+
+const LicenseSpdxMatchSchema = z
+  .object({
+    allow: z.array(z.string()).optional(),
+    deny: z.array(z.string()).optional(),
+  })
+  .strict();
+
+const PackageMatchSchema = z
+  .object({
+    packages: z.array(z.string()).optional(),
+    namePatterns: z.array(z.string()).optional(),
+    findingType: z.string().optional(),
+    severity: stringOrArray.optional(),
+    reasons: z.array(z.string()).optional(),
+    licenseSpdx: LicenseSpdxMatchSchema.optional(),
+    ecosystem: z.string().optional(),
+    options: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+export const PackageRuleSchema = z
+  .object({
+    match: PackageMatchSchema,
+    action: z.enum(['allow', 'warn', 'approve', 'block']),
+    reason: z.string().optional(),
+  })
+  .strict();
+
 // ─── PolicyDefinition ───────────────────────────────────────
 
 export const PolicyDefinitionSchema = z
@@ -117,6 +147,7 @@ export const PolicyDefinitionSchema = z
     env: z.array(EnvRuleSchema).optional(),
     dns: z.array(DnsRedirectSchema).optional(),
     connect: z.array(ConnectRedirectSchema).optional(),
+    packageRules: z.array(PackageRuleSchema).optional(),
   })
   .strict();
 
@@ -130,6 +161,7 @@ export type CommandRule = z.infer<typeof CommandRuleSchema>;
 export type EnvRule = z.infer<typeof EnvRuleSchema>;
 export type DnsRedirect = z.infer<typeof DnsRedirectSchema>;
 export type ConnectRedirect = z.infer<typeof ConnectRedirectSchema>;
+export type PackageRule = z.infer<typeof PackageRuleSchema>;
 
 // ─── Validation ─────────────────────────────────────────────
 
