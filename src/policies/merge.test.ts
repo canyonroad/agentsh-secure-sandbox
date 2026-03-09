@@ -164,4 +164,42 @@ describe('mergePrepend', () => {
 
     expect(() => mergePrepend(base, invalid)).toThrow(PolicyValidationError);
   });
+
+  it('appends packageRules from extensions', () => {
+    const base: PolicyDefinition = {
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+      ],
+    };
+    const extension: Partial<PolicyDefinition> = {
+      packageRules: [
+        { match: { findingType: 'vulnerability', severity: 'high' }, action: 'warn' },
+      ],
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.packageRules).toHaveLength(2);
+    expect(result.packageRules![0].match.findingType).toBe('malware');
+    expect(result.packageRules![1].match.findingType).toBe('vulnerability');
+  });
+
+  it('prepends packageRules from extensions', () => {
+    const base: PolicyDefinition = {
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block' },
+      ],
+    };
+    const extension: Partial<PolicyDefinition> = {
+      packageRules: [
+        { match: { findingType: 'vulnerability', severity: 'high' }, action: 'warn' },
+      ],
+    };
+
+    const result = mergePrepend(base, extension);
+
+    expect(result.packageRules).toHaveLength(2);
+    expect(result.packageRules![0].match.findingType).toBe('vulnerability');
+    expect(result.packageRules![1].match.findingType).toBe('malware');
+  });
 });
