@@ -101,6 +101,80 @@ describe('presets', () => {
       const base2 = agentDefault();
       expect(base1.network!.length).toBe(base2.network!.length);
     });
+
+    describe('packageRules', () => {
+      it('includes packageRules', () => {
+        const policy = agentDefault();
+        expect(policy.packageRules).toBeDefined();
+        expect(Array.isArray(policy.packageRules)).toBe(true);
+      });
+
+      it('has expected number of rules', () => {
+        const policy = agentDefault();
+        expect(policy.packageRules!.length).toBe(6);
+      });
+
+      it('blocks critical vulnerabilities', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.findingType === 'vulnerability' && r.match.severity === 'critical',
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('block');
+      });
+
+      it('blocks known malware', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.findingType === 'malware',
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('block');
+      });
+
+      it('blocks typosquats', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.findingType === 'reputation' && r.match.reasons?.includes('typosquat'),
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('block');
+      });
+
+      it('warns on medium vulnerabilities', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.findingType === 'vulnerability' && r.match.severity === 'medium',
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('warn');
+      });
+
+      it('blocks copyleft licenses (AGPL-3.0-only, SSPL-1.0)', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.findingType === 'license',
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('block');
+        expect(rule!.match.licenseSpdx?.deny).toEqual(['AGPL-3.0-only', 'SSPL-1.0']);
+      });
+
+      it('approves packages newer than 30 days (package_too_new)', () => {
+        const policy = agentDefault();
+        const rule = policy.packageRules!.find(
+          r => r.match.reasons?.includes('package_too_new'),
+        );
+        expect(rule).toBeDefined();
+        expect(rule!.action).toBe('approve');
+        expect(rule!.match.options).toEqual({ maxAgeDays: 30 });
+      });
+
+      it('validates against PolicyDefinitionSchema with packageRules', () => {
+        const policy = agentDefault();
+        expect(PolicyDefinitionSchema.safeParse(policy).success).toBe(true);
+      });
+    });
   });
 
   describe('devSafe', () => {
