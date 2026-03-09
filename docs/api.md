@@ -174,6 +174,9 @@ const sandbox = await secureSandbox(vercel(raw), {
 | `timeout` | `string` | provider default | Timeout duration (e.g. `'30s'`) |
 | `onFailure` | `'warn' \| 'deny' \| 'allow' \| 'approve'` | provider default | Action when provider fails |
 | `apiKeyEnv` | `string` | — | Environment variable holding the API key |
+| `type` | `'exec'` | — | Provider type (use `'exec'` for custom command-based providers) |
+| `command` | `string` | — | Command to execute (for `'exec'` type providers) |
+| `options` | `Record<string, unknown>` | — | Additional provider-specific options |
 
 ### Package Rules
 
@@ -197,6 +200,18 @@ const policy = merge(agentDefault(), {
 
 const sandbox = await secureSandbox(vercel(raw), { policy, packageChecks: {} });
 ```
+
+### Package Match Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `packages` | `string[]` | Exact package names to match |
+| `namePatterns` | `string[]` | Glob/regex patterns for package names |
+| `findingType` | `string` | Finding type (`'vulnerability'`, `'malware'`, `'license'`, `'reputation'`) |
+| `severity` | `string \| string[]` | Severity level(s) to match |
+| `reasons` | `string[]` | Reasons to match (e.g. `['typosquat']`) |
+| `licenseSpdx` | `{ allow?: string[]; deny?: string[] }` | SPDX license criteria |
+| `ecosystem` | `string` | Package ecosystem (e.g. `'npm'`, `'pip'`) |
 
 ## Custom Adapter
 
