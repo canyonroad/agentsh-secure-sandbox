@@ -6,6 +6,7 @@
     "type": "git",
     "url": "https://github.com/canyonroad/agentsh-secure-sandbox"
   },
+  "homepage": "https://www.agentsh.org/secure-sandbox/",
   "type": "module",
   "exports": {
     ".": {
