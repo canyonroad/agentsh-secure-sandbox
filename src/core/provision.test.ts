@@ -128,7 +128,8 @@ describe('provision', () => {
       ([path]: [string]) => path === '/etc/agentsh/config.yml',
     );
     expect(configCall).toBeDefined();
-    expect(configCall![1]).toContain('workspace');
+    expect(configCall![1]).toContain('sandbox');
+    expect(configCall![1]).not.toContain('workspace');
   });
 
   it('sets file permissions (chmod, chown)', async () => {
@@ -263,7 +264,7 @@ describe('provision', () => {
     expect(urlArg).toContain('linux_arm64');
   });
 
-  it('passes workspace to config', async () => {
+  it('does not pass workspace to config (workspace is a session create arg)', async () => {
     const adapter = createMockAdapter();
     await provision(adapter, { workspace: '/home/daytona' });
 
@@ -273,7 +274,7 @@ describe('provision', () => {
       ([path]: [string]) => path === '/etc/agentsh/config.yml',
     );
     expect(configCall).toBeDefined();
-    expect(configCall![1]).toContain('/home/daytona');
+    expect(configCall![1]).not.toContain('/home/daytona');
   });
 
   it('passes watchtower to config', async () => {

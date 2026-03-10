@@ -43,8 +43,6 @@ This library requires **agentsh v0.14.0+** with support for:
   agentsh core, this feature must be added before this library ships v0.1.
 - **Security modes** (`full`, `landlock`, `landlock-only`, `minimal`) with
   auto-detection via `agentsh detect`.
-- **Enforced redirects** (`enforceRedirects` flag) for blocking execution
-  instead of shadowing to stub binary.
 - **Path canonicalization** — resolves symlinks before policy evaluation,
   preventing `/proc/self/root` and symlink-based bypass attacks (v0.14.0).
 - **Transparent command unwrapping** — peels wrapper commands (`env`, `sudo`,
@@ -306,14 +304,6 @@ interface SecureConfig {
   realPaths?: boolean;
 
   /**
-   * Make redirect rules enforced (deny execution) instead of shadowing
-   * to a stub binary. When true, redirected commands are blocked outright
-   * rather than silently rerouted.
-   * Default: false (shadow mode — redirect to stub, audit the event).
-   * (agentsh v0.13.0+)
-   */
-  enforceRedirects?: boolean;
-
   /**
    * W3C traceparent header to propagate into the agentsh session.
    * Enables distributed tracing correlation between external OTEL

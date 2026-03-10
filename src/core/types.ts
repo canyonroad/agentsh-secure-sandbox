@@ -198,13 +198,6 @@ export interface SecureConfig {
   realPaths?: boolean;
 
   /**
-   * Make redirect rules enforced (deny execution) instead of shadowing
-   * to a stub binary.
-   * Default: false (shadow mode).
-   */
-  enforceRedirects?: boolean;
-
-  /**
    * W3C traceparent header to propagate into the agentsh session.
    * Format: '00-<trace-id>-<span-id>-<flags>'
    */
