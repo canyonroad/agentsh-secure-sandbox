@@ -79,6 +79,50 @@ export function agentDefault(
         to: { cmd: 'agentsh-fetch', args: ['--audit'] },
       },
     ],
+    packageRules: [
+      // Critical vulnerability = block
+      {
+        match: { findingType: 'vulnerability', severity: 'critical' },
+        action: 'block',
+        reason: 'Critical vulnerability — review before installing',
+      },
+      // Known malware = block
+      {
+        match: { findingType: 'malware' },
+        action: 'block',
+        reason: 'Known malware detected',
+      },
+      // Typosquat = block
+      {
+        match: { findingType: 'reputation', reasons: ['typosquat'] },
+        action: 'block',
+        reason: 'Package flagged as potential typosquat',
+      },
+      // Medium vulnerability = warn
+      {
+        match: { findingType: 'vulnerability', severity: 'medium' },
+        action: 'warn',
+        reason: 'Medium vulnerability — review before using',
+      },
+      // Copyleft licenses = block
+      {
+        match: {
+          findingType: 'license',
+          licenseSpdx: { deny: ['AGPL-3.0-only', 'SSPL-1.0'] },
+        },
+        action: 'block',
+        reason: 'Copyleft license incompatible with proprietary code',
+      },
+      // Package too new = approve (requires human confirmation)
+      {
+        match: {
+          findingType: 'reputation',
+          reasons: ['package_too_new'],
+        },
+        action: 'approve',
+        reason: 'Package published recently — requires approval',
+      },
+    ],
   };
   return extensions ? merge(base, extensions) : base;
 }

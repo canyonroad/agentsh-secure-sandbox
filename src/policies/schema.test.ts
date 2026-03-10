@@ -215,6 +215,174 @@ describe('PolicyDefinitionSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // Package rules
+  it('accepts valid package rule with match and action', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { packages: ['lodash'] }, action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with all match fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        {
+          match: {
+            packages: ['lodash', 'express'],
+            namePatterns: ['@evil/*'],
+            findingType: 'malware',
+            severity: 'critical',
+            reasons: ['known-malware'],
+            licenseSpdx: { allow: ['MIT', 'Apache-2.0'], deny: ['GPL-3.0'] },
+            ecosystem: 'npm',
+            options: { customKey: true },
+          },
+          action: 'block',
+          reason: 'Known malicious package',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with severity as array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { severity: ['critical', 'high'] }, action: 'block' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with severity as string', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { severity: 'critical' }, action: 'block' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with empty match (matches all)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: {}, action: 'warn' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with reason', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { packages: ['is-odd'] }, action: 'warn', reason: 'Unnecessary micro-dependency' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with licenseSpdx allow only', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { licenseSpdx: { allow: ['MIT'] } }, action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts package rule with licenseSpdx deny only', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { licenseSpdx: { deny: ['AGPL-3.0'] } }, action: 'block' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all four package rule actions', () => {
+    for (const action of ['allow', 'warn', 'approve', 'block'] as const) {
+      const result = PolicyDefinitionSchema.safeParse({
+        packageRules: [{ match: {}, action }],
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects package rule with invalid action', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: {}, action: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects package rule without match', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects package rule without action', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { packages: ['lodash'] } },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects package match with unknown field', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { packages: ['lodash'], unknownField: 'value' }, action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects package rule with extra properties', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: {}, action: 'allow', extra: 'field' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects licenseSpdx with extra properties', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { licenseSpdx: { allow: ['MIT'], extra: true } }, action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts multiple package rules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [
+        { match: { findingType: 'malware' }, action: 'block', reason: 'Block malware' },
+        { match: { severity: 'critical' }, action: 'block' },
+        { match: { licenseSpdx: { deny: ['GPL-3.0'] } }, action: 'warn' },
+        { match: {}, action: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty packageRules array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      packageRules: [],
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validatePolicy', () => {

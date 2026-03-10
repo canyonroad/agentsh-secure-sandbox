@@ -223,6 +223,12 @@ export interface SecureConfig {
    * Set to `false` to disable, or provide a custom ThreatFeedsConfig.
    */
   threatFeeds?: false | ThreatFeedsConfig;
+
+  /**
+   * Package install security checks.
+   * Set to `false` to disable, or provide a PackageChecksConfig.
+   */
+  packageChecks?: false | PackageChecksConfig;
 }
 
 // ─── Threat feeds configuration ──────────────────────────────
@@ -245,4 +251,67 @@ export interface ThreatFeedsConfig {
   feeds: ThreatFeed[];
   /** Domains to exclude from blocking (e.g. legitimate services that may appear in feeds). */
   allowlist?: string[];
+}
+
+// ─── Package checks configuration ───────────────────────────
+
+export interface ProviderConfig {
+  /** Whether this provider is enabled. */
+  enabled?: boolean;
+  /** Priority order (lower = higher priority). */
+  priority?: number;
+  /** Timeout duration string (e.g. '30s', '2m'). */
+  timeout?: string;
+  /** Action on provider failure. */
+  onFailure?: 'warn' | 'deny' | 'allow' | 'approve';
+  /** Environment variable name holding the API key. */
+  apiKeyEnv?: string;
+  /** Provider type. */
+  type?: 'exec';
+  /** Command to execute (for 'exec' type providers). */
+  command?: string;
+  /** Additional provider-specific options. */
+  options?: Record<string, unknown>;
+}
+
+export interface PackageChecksConfig {
+  /** Whether to check only new packages or all installs. */
+  scope?: 'new_packages_only' | 'all_installs';
+  /** Map of provider name to provider configuration (or boolean shorthand). */
+  providers?: Record<string, boolean | ProviderConfig>;
+}
+
+export interface LicenseSpdxMatch {
+  /** Allowed SPDX license identifiers. */
+  allow?: string[];
+  /** Denied SPDX license identifiers. */
+  deny?: string[];
+}
+
+export interface PackageMatch {
+  /** Exact package names to match. */
+  packages?: string[];
+  /** Glob/regex patterns for package names. */
+  namePatterns?: string[];
+  /** Type of finding to match (e.g. 'malware', 'vulnerability'). */
+  findingType?: string;
+  /** Severity level to match. */
+  severity?: string | string[];
+  /** Reasons to match. */
+  reasons?: string[];
+  /** SPDX license matching criteria. */
+  licenseSpdx?: LicenseSpdxMatch;
+  /** Package ecosystem (e.g. 'npm', 'pip'). */
+  ecosystem?: string;
+  /** Additional match options. */
+  options?: Record<string, unknown>;
+}
+
+export interface PackageRule {
+  /** Matching criteria for the rule. */
+  match: PackageMatch;
+  /** Action to take when the rule matches. */
+  action: 'allow' | 'warn' | 'approve' | 'block';
+  /** Human-readable reason for the rule. */
+  reason?: string;
 }

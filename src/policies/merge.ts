@@ -1,7 +1,7 @@
 import type { PolicyDefinition } from './schema.js';
 import { validatePolicy } from './schema.js';
 
-const CATEGORIES = ['file', 'network', 'commands', 'env', 'dns', 'connect'] as const;
+const CATEGORIES = ['file', 'network', 'commands', 'env', 'dns', 'connect', 'packageRules'] as const;
 
 /**
  * Merge policy overrides AFTER base rules for each category.

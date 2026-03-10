@@ -13,6 +13,7 @@ const sandbox = await secureSandbox(adapter, {
   agentshVersion: '0.15.0',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
+  packageChecks: {},                   // Enable package install security checks
 });
 ```
 
@@ -27,6 +28,7 @@ const sandbox = await secureSandbox(adapter, {
 | `securityMode` | `SecurityMode` | `undefined` | Override detected security mode. Only used with `'running'` strategy (defaults to `'full'`). |
 | `sessionId` | `string` | `undefined` | Existing agentsh session ID. Only used with `'running'` strategy. Falls back to `$AGENTSH_SESSION_ID`. |
 | `threatFeeds` | `boolean \| ThreatFeedConfig` | `true` | Threat intelligence feed configuration |
+| `packageChecks` | `false \| PackageChecksConfig` | `false` | Package install security checks (OSV, deps.dev, Socket, Snyk) |
 
 ### Install Strategies
 
@@ -112,6 +114,105 @@ const sandbox = await secureSandbox(vercel(raw), {
 
 console.log(sandbox.securityMode); // 'landlock'
 ```
+
+## Package Checks
+
+Intercept package install commands (`npm install`, `pip install`, `yarn add`, etc.) and check packages against security providers before allowing installation. Disabled by default.
+
+```typescript
+const sandbox = await secureSandbox(vercel(raw), {
+  packageChecks: {},  // Enable with free defaults (OSV, deps.dev, local)
+});
+```
+
+### Configuration
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `scope` | `'new_packages_only' \| 'all_installs'` | `'new_packages_only'` | Check new packages only, or re-check on every install |
+| `providers` | `Record<string, boolean \| ProviderConfig>` | 3 free defaults | Map of provider name to config |
+
+### Default Providers
+
+When enabled, three free providers are active:
+
+| Provider | Priority | What It Checks |
+|----------|----------|---------------|
+| `local` | 0 | Local package metadata analysis |
+| `osv` | 1 | Known vulnerabilities via [OSV.dev](https://osv.dev) |
+| `depsdev` | 2 | License, scorecard, and dependency info via [deps.dev](https://deps.dev) |
+
+### Adding Providers
+
+```typescript
+const sandbox = await secureSandbox(vercel(raw), {
+  packageChecks: {
+    providers: {
+      socket: { apiKeyEnv: 'SOCKET_API_KEY' },  // Add Socket.dev
+      snyk: { apiKeyEnv: 'SNYK_TOKEN' },         // Add Snyk
+    },
+  },
+});
+```
+
+### Disabling a Default Provider
+
+```typescript
+const sandbox = await secureSandbox(vercel(raw), {
+  packageChecks: {
+    providers: { depsdev: false },  // Disable deps.dev
+  },
+});
+```
+
+### Provider Config
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Enable/disable this provider |
+| `priority` | `number` | varies | Lower = higher priority |
+| `timeout` | `string` | provider default | Timeout duration (e.g. `'30s'`) |
+| `onFailure` | `'warn' \| 'deny' \| 'allow' \| 'approve'` | provider default | Action when provider fails |
+| `apiKeyEnv` | `string` | — | Environment variable holding the API key |
+| `type` | `'exec'` | — | Provider type (use `'exec'` for custom command-based providers) |
+| `command` | `string` | — | Command to execute (for `'exec'` type providers) |
+| `options` | `Record<string, unknown>` | — | Additional provider-specific options |
+
+### Package Rules
+
+Package rules in the policy control what happens when a provider reports a finding. The `agentDefault()` preset includes sensible defaults:
+
+- **Block**: critical vulnerabilities, malware, typosquats, AGPL/SSPL licenses
+- **Warn**: medium vulnerabilities
+- **Approve** (human-in-the-loop): packages less than 30 days old
+
+Customize via the policy:
+
+```typescript
+import { agentDefault, merge } from '@agentsh/secure-sandbox/policies';
+
+const policy = merge(agentDefault(), {
+  packageRules: [
+    { match: { packages: ['lodash'] }, action: 'allow', reason: 'Trusted package' },
+    { match: { findingType: 'vulnerability', severity: 'low' }, action: 'allow' },
+  ],
+});
+
+const sandbox = await secureSandbox(vercel(raw), { policy, packageChecks: {} });
+```
+
+### Package Match Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `packages` | `string[]` | Exact package names to match |
+| `namePatterns` | `string[]` | Glob/regex patterns for package names |
+| `findingType` | `string` | Finding type (`'vulnerability'`, `'malware'`, `'license'`, `'reputation'`) |
+| `severity` | `string \| string[]` | Severity level(s) to match |
+| `reasons` | `string[]` | Reasons to match (e.g. `['typosquat']`) |
+| `licenseSpdx` | `{ allow?: string[]; deny?: string[] }` | SPDX license criteria |
+| `ecosystem` | `string` | Package ecosystem (e.g. `'npm'`, `'pip'`) |
+| `options` | `Record<string, unknown>` | Additional match options |
 
 ## Custom Adapter
 

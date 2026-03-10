@@ -13,6 +13,11 @@ export type {
   InstallStrategy,
   ThreatFeedsConfig,
   ThreatFeed,
+  PackageChecksConfig,
+  ProviderConfig,
+  PackageMatch,
+  PackageRule,
+  LicenseSpdxMatch,
 } from './core/types.js';
 
 // Default threat feeds config
