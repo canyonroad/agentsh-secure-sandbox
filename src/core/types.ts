@@ -229,6 +229,9 @@ export interface SecureConfig {
    * Set to `false` to disable, or provide a PackageChecksConfig.
    */
   packageChecks?: false | PackageChecksConfig;
+
+  /** Extended server config options (gRPC, logging, sessions, audit, DLP, proxy, etc.). */
+  serverConfig?: Omit<import('./config.js').ServerConfigOpts, 'watchtower' | 'realPaths' | 'threatFeeds' | 'packageChecks'>;
 }
 
 // ─── Threat feeds configuration ──────────────────────────────

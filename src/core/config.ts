@@ -6,6 +6,24 @@ export interface ServerConfigOpts {
   realPaths?: boolean;
   threatFeeds?: false | ThreatFeedsConfig;
   packageChecks?: false | PackageChecksConfig;
+  grpc?: { addr: string };
+  serverTimeouts?: { readTimeout?: string; writeTimeout?: string; maxRequestSize?: string };
+  logging?: { level?: string; format?: string; output?: string };
+  sessions?: { baseDir?: string; maxSessions?: number; defaultTimeout?: string; idleTimeout?: string; cleanupInterval?: string };
+  audit?: { enabled?: boolean; sqlitePath?: string };
+  sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
+  fuse?: { deferred?: boolean };
+  networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
+  seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean } };
+  cgroups?: { enabled?: boolean };
+  unixSockets?: { enabled?: boolean };
+  proxy?: { mode?: string; port?: number; providers?: Record<string, string> };
+  dlp?: { mode?: string; patterns?: Record<string, boolean>; customPatterns?: Array<{ name: string; display: string; regex: string }> };
+  policiesOverride?: { dir?: string; defaultPolicy?: string };
+  approvals?: { enabled?: boolean; mode?: string; timeout?: string };
+  metrics?: { enabled?: boolean; path?: string };
+  health?: { path?: string; readinessPath?: string };
+  development?: { disableAuth?: boolean; verboseErrors?: boolean };
 }
 
 /**
@@ -92,7 +110,137 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;
-  if (opts.realPaths) config.sessions = { real_paths: true };
+
+  // ─── Extended config sections ─────────────────────────────────
+
+  // gRPC
+  if (opts.grpc) {
+    (config.server as any).grpc = { enabled: true, addr: opts.grpc.addr };
+  }
+
+  // Server timeouts → merge into server.http
+  if (opts.serverTimeouts) {
+    const http = (config.server as any).http;
+    if (opts.serverTimeouts.readTimeout) http.read_timeout = opts.serverTimeouts.readTimeout;
+    if (opts.serverTimeouts.writeTimeout) http.write_timeout = opts.serverTimeouts.writeTimeout;
+    if (opts.serverTimeouts.maxRequestSize) http.max_request_size = opts.serverTimeouts.maxRequestSize;
+  }
+
+  // Logging
+  if (opts.logging) config.logging = { ...opts.logging };
+
+  // Sessions (merge realPaths + extended sessions)
+  const sessionsObj: Record<string, unknown> = {};
+  if (opts.realPaths) sessionsObj.real_paths = true;
+  if (opts.sessions) {
+    if (opts.sessions.baseDir) sessionsObj.base_dir = opts.sessions.baseDir;
+    if (opts.sessions.maxSessions !== undefined) sessionsObj.max_sessions = opts.sessions.maxSessions;
+    if (opts.sessions.defaultTimeout) sessionsObj.default_timeout = opts.sessions.defaultTimeout;
+    if (opts.sessions.idleTimeout) sessionsObj.idle_timeout = opts.sessions.idleTimeout;
+    if (opts.sessions.cleanupInterval) sessionsObj.cleanup_interval = opts.sessions.cleanupInterval;
+  }
+  if (Object.keys(sessionsObj).length > 0) config.sessions = sessionsObj;
+
+  // Audit
+  if (opts.audit) {
+    const auditObj: Record<string, unknown> = {};
+    if (opts.audit.enabled !== undefined) auditObj.enabled = opts.audit.enabled;
+    if (opts.audit.sqlitePath) auditObj.sqlite_path = opts.audit.sqlitePath;
+    config.audit = auditObj;
+  }
+
+  // Sandbox limits
+  if (opts.sandboxLimits) {
+    (config.sandbox as any).limits = {
+      ...(opts.sandboxLimits.maxMemoryMb !== undefined && { max_memory_mb: opts.sandboxLimits.maxMemoryMb }),
+      ...(opts.sandboxLimits.maxCpuPercent !== undefined && { max_cpu_percent: opts.sandboxLimits.maxCpuPercent }),
+      ...(opts.sandboxLimits.maxProcesses !== undefined && { max_processes: opts.sandboxLimits.maxProcesses }),
+    };
+  }
+
+  // FUSE deferred
+  if (opts.fuse?.deferred !== undefined) {
+    (config.sandbox as any).fuse.deferred = opts.fuse.deferred;
+  }
+
+  // Network intercept
+  if (opts.networkIntercept) {
+    const net = (config.sandbox as any).network;
+    if (opts.networkIntercept.interceptMode) net.intercept_mode = opts.networkIntercept.interceptMode;
+    if (opts.networkIntercept.proxyListenAddr) net.proxy_listen_addr = opts.networkIntercept.proxyListenAddr;
+  }
+
+  // Seccomp details
+  if (opts.seccompDetails) {
+    const sec = (config.sandbox as any).seccomp;
+    if (opts.seccompDetails.execve !== undefined) sec.execve = opts.seccompDetails.execve;
+    if (opts.seccompDetails.fileMonitor) {
+      sec.file_monitor = {
+        ...(opts.seccompDetails.fileMonitor.enabled !== undefined && { enabled: opts.seccompDetails.fileMonitor.enabled }),
+        ...(opts.seccompDetails.fileMonitor.enforceWithoutFuse !== undefined && { enforce_without_fuse: opts.seccompDetails.fileMonitor.enforceWithoutFuse }),
+      };
+    }
+  }
+
+  // Cgroups
+  if (opts.cgroups) {
+    (config.sandbox as any).cgroups = { ...opts.cgroups };
+  }
+
+  // Unix sockets
+  if (opts.unixSockets) {
+    (config.sandbox as any).unix_sockets = { ...opts.unixSockets };
+  }
+
+  // Proxy
+  if (opts.proxy) {
+    config.proxy = { ...opts.proxy };
+  }
+
+  // DLP
+  if (opts.dlp) {
+    const dlpObj: Record<string, unknown> = {};
+    if (opts.dlp.mode) dlpObj.mode = opts.dlp.mode;
+    if (opts.dlp.patterns) dlpObj.patterns = opts.dlp.patterns;
+    if (opts.dlp.customPatterns) {
+      dlpObj.custom_patterns = opts.dlp.customPatterns.map(p => ({
+        name: p.name,
+        display: p.display,
+        regex: p.regex,
+      }));
+    }
+    config.dlp = dlpObj;
+  }
+
+  // Policies override
+  if (opts.policiesOverride) {
+    config.policies = {
+      ...(opts.policiesOverride.dir && { dir: opts.policiesOverride.dir }),
+      ...(opts.policiesOverride.defaultPolicy && { default: opts.policiesOverride.defaultPolicy }),
+    };
+  }
+
+  // Approvals
+  if (opts.approvals) config.approvals = { ...opts.approvals };
+
+  // Metrics
+  if (opts.metrics) config.metrics = { ...opts.metrics };
+
+  // Health
+  if (opts.health) {
+    const healthObj: Record<string, unknown> = {};
+    if (opts.health.path) healthObj.path = opts.health.path;
+    if (opts.health.readinessPath) healthObj.readiness_path = opts.health.readinessPath;
+    config.health = healthObj;
+  }
+
+  // Development
+  if (opts.development) {
+    const devObj: Record<string, unknown> = {};
+    if (opts.development.disableAuth !== undefined) devObj.disable_auth = opts.development.disableAuth;
+    if (opts.development.verboseErrors !== undefined) devObj.verbose_errors = opts.development.verboseErrors;
+    config.development = devObj;
+  }
 
   // Threat feeds: enabled by default, opt-out with `threatFeeds: false`
   const feeds = opts.threatFeeds === false ? undefined : (opts.threatFeeds ?? defaultThreatFeeds);

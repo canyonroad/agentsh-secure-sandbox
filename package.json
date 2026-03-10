@@ -37,6 +37,10 @@
       "types": "./dist/adapters/blaxel.d.ts",
       "import": "./dist/adapters/blaxel.js"
     },
+    "./adapters/sprites": {
+      "types": "./dist/adapters/sprites.d.ts",
+      "import": "./dist/adapters/sprites.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
@@ -56,6 +60,7 @@
     "build": "tsup",
     "test": "vitest run",
     "test:e2e": "E2E=1 vitest run --config vitest.e2e.config.ts",
+    "test:e2e:sprites": "npx tsx src/e2e/sprites-e2e-runner.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
@@ -68,6 +73,7 @@
     "@blaxel/core": "^0.2.71",
     "@cloudflare/sandbox": "^0.7.13",
     "@daytonaio/sdk": "^0.149.0",
+    "@fly/sprites": "^0.0.1-rc37",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
     "@vercel/sandbox": "^1.8.0",
@@ -83,6 +89,7 @@
     "@cloudflare/sandbox": "^0.1.0",
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
+    "@fly/sprites": "^1.0.0",
     "@vercel/sandbox": "^1.0.0"
   },
   "peerDependenciesMeta": {
@@ -99,6 +106,9 @@
       "optional": true
     },
     "@daytonaio/sdk": {
+      "optional": true
+    },
+    "@fly/sprites": {
       "optional": true
     }
   }
