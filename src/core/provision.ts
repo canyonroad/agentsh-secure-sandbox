@@ -92,6 +92,7 @@ export async function provision(
     policyName = 'policy',
     threatFeeds,
     packageChecks,
+    serverConfig: extendedConfig,
   } = config;
 
   // Resolve and validate policy
@@ -278,6 +279,7 @@ export async function provision(
     realPaths,
     threatFeeds,
     packageChecks,
+    ...extendedConfig,
   });
 
   await adapter.writeFile('/etc/agentsh/config.yml', serverConfig, {

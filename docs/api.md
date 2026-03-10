@@ -214,6 +214,73 @@ const sandbox = await secureSandbox(vercel(raw), { policy, packageChecks: {} });
 | `ecosystem` | `string` | Package ecosystem (e.g. `'npm'`, `'pip'`) |
 | `options` | `Record<string, unknown>` | Additional match options |
 
+## Sprites Adapter
+
+The Sprites adapter wraps a `@fly/sprites` `Sprite` instance for use with Firecracker microVMs on [Sprites.dev](https://sprites.dev).
+
+```typescript
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { sprites, spritesDefaults } from '@agentsh/secure-sandbox/adapters/sprites';
+import { SpritesClient } from '@fly/sprites';
+
+const client = new SpritesClient(process.env.SPRITES_TOKEN);
+const sprite = client.sprite('my-sprite');
+const sandbox = await secureSandbox(sprites(sprite), {
+  ...spritesDefaults(),
+  // your overrides
+});
+
+const result = await sandbox.exec('echo hello');
+await sandbox.stop(); // calls sprite.delete()
+```
+
+### `sprites(sprite)`
+
+Creates a `SandboxAdapter` from a Sprites `Sprite` instance. Uses `sprite.execFile('sh', ['-c', cmd])` internally because the SDK's `sprite.exec()` does a naive whitespace split without shell parsing. File operations use base64 encode/decode piped through `sh`.
+
+### `spritesDefaults()`
+
+Returns Sprites-optimized `Partial<SecureConfig>` with sensible defaults for Firecracker microVMs:
+
+- `installStrategy: 'preinstalled'` — binary baked into the VM image
+- `realPaths: true` — use real host paths
+- Extended server config: gRPC, audit logging, resource limits, cgroups, DLP, metrics, health checks
+
+Spread into your config and override as needed:
+
+```typescript
+const sandbox = await secureSandbox(sprites(sprite), {
+  ...spritesDefaults(),
+  policy: myPolicy,
+  watchtower: 'https://watchtower.example.com',
+});
+```
+
+### Extended Server Config
+
+The `serverConfig` field on `SecureConfig` accepts additional server configuration sections that are merged into the generated `config.yml`. These are primarily useful for Sprites and other advanced deployments:
+
+| Section | Description |
+|---------|-------------|
+| `grpc` | gRPC server endpoint |
+| `serverTimeouts` | HTTP read/write timeouts and max request size |
+| `logging` | Log level, format, and output |
+| `sessions` | Session base dir, limits, timeouts, cleanup |
+| `audit` | SQLite audit logging |
+| `sandboxLimits` | Memory, CPU, and process limits |
+| `fuse` | FUSE deferred mode |
+| `networkIntercept` | Network intercept mode and proxy address |
+| `seccompDetails` | Execve filtering and file monitor |
+| `cgroups` | Cgroup isolation |
+| `unixSockets` | Unix socket support |
+| `proxy` | MITM proxy mode, port, and provider URLs |
+| `dlp` | Data loss prevention (redact mode, patterns) |
+| `policiesOverride` | Override default policies directory |
+| `approvals` | Human-in-the-loop approval settings |
+| `metrics` | Prometheus metrics endpoint |
+| `health` | Health and readiness check paths |
+| `development` | Development mode flags |
+
 ## Custom Adapter
 
 Any sandbox that can run commands works with `secureSandbox()`. Implement the `SandboxAdapter` interface:

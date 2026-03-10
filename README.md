@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), and [Blaxel](https://blaxel.ai/sandbox). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), and [Sprites](https://sprites.dev). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -113,6 +113,7 @@ Enforcement happens at the **syscall level** — seccomp intercepts process exec
 | [**Daytona**](https://www.daytona.io/) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
 | [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | ✅ | ❌ | ✅ | ✅ | `landlock` |
 | [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
+| [**Sprites**](https://sprites.dev) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
 
 ```typescript
 // E2B
@@ -131,6 +132,12 @@ const sandbox = await secureSandbox(adapters.cloudflare(getSandbox(env.Sandbox, 
 // Blaxel
 import { SandboxInstance } from '@blaxel/core';
 const sandbox = await secureSandbox(adapters.blaxel(await SandboxInstance.create({ name: 'my-sandbox' })));
+
+// Sprites (Fly.io Firecracker microVMs)
+import { SpritesClient } from '@fly/sprites';
+import { sprites } from '@agentsh/secure-sandbox/adapters/sprites';
+const client = new SpritesClient(process.env.SPRITES_TOKEN);
+const sandbox = await secureSandbox(sprites(client.sprite('my-sprite')));
 ```
 
 ## Default Policy

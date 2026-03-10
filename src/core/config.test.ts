@@ -208,6 +208,162 @@ describe('generateServerConfig — packageChecks', () => {
   });
 });
 
+describe('generateServerConfig — extended fields', () => {
+  it('generates server.grpc when grpc is set', () => {
+    const result = generateServerConfig({ grpc: { addr: '0.0.0.0:50051' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.server.grpc).toEqual({ enabled: true, addr: '0.0.0.0:50051' });
+  });
+
+  it('merges server timeouts into server.http', () => {
+    const result = generateServerConfig({
+      serverTimeouts: { readTimeout: '30s', writeTimeout: '60s', maxRequestSize: '10mb' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.server.http.read_timeout).toBe('30s');
+    expect(parsed.server.http.write_timeout).toBe('60s');
+    expect(parsed.server.http.max_request_size).toBe('10mb');
+    expect(parsed.server.http.addr).toBe('127.0.0.1:18080');
+  });
+
+  it('generates logging section', () => {
+    const result = generateServerConfig({ logging: { level: 'debug', format: 'json', output: 'stdout' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.logging).toEqual({ level: 'debug', format: 'json', output: 'stdout' });
+  });
+
+  it('merges sessions with real_paths', () => {
+    const result = generateServerConfig({
+      realPaths: true,
+      sessions: { baseDir: '/var/sessions', maxSessions: 100, defaultTimeout: '30m', idleTimeout: '10m', cleanupInterval: '5m' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sessions.real_paths).toBe(true);
+    expect(parsed.sessions.base_dir).toBe('/var/sessions');
+    expect(parsed.sessions.max_sessions).toBe(100);
+    expect(parsed.sessions.default_timeout).toBe('30m');
+    expect(parsed.sessions.idle_timeout).toBe('10m');
+    expect(parsed.sessions.cleanup_interval).toBe('5m');
+  });
+
+  it('generates audit section', () => {
+    const result = generateServerConfig({ audit: { enabled: true, sqlitePath: '/var/audit.db' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit).toEqual({ enabled: true, sqlite_path: '/var/audit.db' });
+  });
+
+  it('generates sandbox.limits', () => {
+    const result = generateServerConfig({ sandboxLimits: { maxMemoryMb: 512, maxCpuPercent: 80, maxProcesses: 100 } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.limits).toEqual({ max_memory_mb: 512, max_cpu_percent: 80, max_processes: 100 });
+  });
+
+  it('sets fuse.deferred', () => {
+    const result = generateServerConfig({ fuse: { deferred: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    expect(parsed.sandbox.fuse.deferred).toBe(true);
+  });
+
+  it('generates network intercept config', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'tproxy', proxyListenAddr: '127.0.0.1:8888' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.enabled).toBe(true);
+    expect(parsed.sandbox.network.intercept_mode).toBe('tproxy');
+    expect(parsed.sandbox.network.proxy_listen_addr).toBe('127.0.0.1:8888');
+  });
+
+  it('generates seccomp details with file_monitor', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true, fileMonitor: { enabled: true, enforceWithoutFuse: false } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.execve).toBe(true);
+    expect(parsed.sandbox.seccomp.file_monitor).toEqual({ enabled: true, enforce_without_fuse: false });
+  });
+
+  it('generates cgroups section', () => {
+    const result = generateServerConfig({ cgroups: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.cgroups).toEqual({ enabled: true });
+  });
+
+  it('generates unix_sockets section', () => {
+    const result = generateServerConfig({ unixSockets: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.unix_sockets).toEqual({ enabled: true });
+  });
+
+  it('generates proxy section', () => {
+    const result = generateServerConfig({ proxy: { mode: 'mitm', port: 8080, providers: { openai: 'https://api.openai.com' } } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.proxy).toEqual({ mode: 'mitm', port: 8080, providers: { openai: 'https://api.openai.com' } });
+  });
+
+  it('generates DLP section with custom_patterns', () => {
+    const result = generateServerConfig({
+      dlp: {
+        mode: 'redact',
+        patterns: { credit_card: true, ssn: false },
+        customPatterns: [{ name: 'api_key', display: 'API Key', regex: 'sk-[a-zA-Z0-9]{32}' }],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.dlp.mode).toBe('redact');
+    expect(parsed.dlp.patterns).toEqual({ credit_card: true, ssn: false });
+    expect(parsed.dlp.custom_patterns).toEqual([{ name: 'api_key', display: 'API Key', regex: 'sk-[a-zA-Z0-9]{32}' }]);
+  });
+
+  it('overrides policies section when policiesOverride is set', () => {
+    const result = generateServerConfig({ policiesOverride: { dir: '/custom/policies', defaultPolicy: 'strict' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies).toEqual({ dir: '/custom/policies', default: 'strict' });
+    expect(parsed.policies.system_dir).toBeUndefined();
+  });
+
+  it('generates approvals section', () => {
+    const result = generateServerConfig({ approvals: { enabled: true, mode: 'human', timeout: '5m' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.approvals).toEqual({ enabled: true, mode: 'human', timeout: '5m' });
+  });
+
+  it('generates metrics section', () => {
+    const result = generateServerConfig({ metrics: { enabled: true, path: '/metrics' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.metrics).toEqual({ enabled: true, path: '/metrics' });
+  });
+
+  it('generates health section with readiness_path', () => {
+    const result = generateServerConfig({ health: { path: '/healthz', readinessPath: '/readyz' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.health).toEqual({ path: '/healthz', readiness_path: '/readyz' });
+  });
+
+  it('generates development section', () => {
+    const result = generateServerConfig({ development: { disableAuth: true, verboseErrors: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.development).toEqual({ disable_auth: true, verbose_errors: true });
+  });
+
+  it('omits all extended fields when not set', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.server.grpc).toBeUndefined();
+    expect(parsed.logging).toBeUndefined();
+    expect(parsed.audit).toBeUndefined();
+    expect(parsed.proxy).toBeUndefined();
+    expect(parsed.dlp).toBeUndefined();
+    expect(parsed.approvals).toBeUndefined();
+    expect(parsed.metrics).toBeUndefined();
+    expect(parsed.health).toBeUndefined();
+    expect(parsed.development).toBeUndefined();
+    expect(parsed.sandbox.limits).toBeUndefined();
+    expect(parsed.sandbox.cgroups).toBeUndefined();
+    expect(parsed.sandbox.unix_sockets).toBeUndefined();
+  });
+});
+
 describe('defaultThreatFeeds', () => {
   it('has urlhaus and phishing feeds', () => {
     expect(defaultThreatFeeds.feeds).toHaveLength(2);

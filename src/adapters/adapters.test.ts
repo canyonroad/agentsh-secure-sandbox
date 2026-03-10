@@ -4,6 +4,7 @@ import { e2b } from './e2b.js';
 import { daytona } from './daytona.js';
 import { cloudflare } from './cloudflare.js';
 import { blaxel } from './blaxel.js';
+import { sprites } from './sprites.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -424,6 +425,145 @@ describe('blaxel adapter', () => {
       delete: vi.fn(async () => {}),
     };
     const adapter = blaxel(mock);
+    await adapter.stop!();
+    expect(mock.delete).toHaveBeenCalled();
+  });
+});
+
+describe('sprites adapter', () => {
+  it('maps exec to sprite.execFile with sh -c', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: 'out', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    const result = await adapter.exec('echo', ['hello world']);
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('echo')],
+      expect.objectContaining({}),
+    );
+    expect(result.stdout).toBe('out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('prepends sudo to command', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringMatching(/^sudo /)],
+      expect.anything(),
+    );
+  });
+
+  it('detached returns immediately with exitCode 0', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    const result = await adapter.exec('server', ['start'], { detached: true });
+    expect(result.exitCode).toBe(0);
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('nohup')],
+    );
+  });
+
+  it('includes env vars in command', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('TRACEPARENT=00-abc-def-01')],
+      expect.anything(),
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('FOO=bar')],
+    );
+  });
+
+  it('writeFile uses sh -c with base64 pipe', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await adapter.writeFile('/workspace/test.txt', 'hello');
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('base64')],
+    );
+  });
+
+  it('readFile uses sh -c with cat', async () => {
+    const mock = {
+      execFile: vi.fn(async () => ({ stdout: 'file content', stderr: '' })),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    const content = await adapter.readFile('/workspace/test.txt');
+    expect(mock.execFile).toHaveBeenCalledWith(
+      'sh',
+      ['-c', expect.stringContaining('cat')],
+    );
+    expect(content).toBe('file content');
+  });
+
+  it('writeFile throws on exec error', async () => {
+    const mock = {
+      execFile: vi.fn(async () => { throw { exitCode: 1, stderr: 'permission denied' }; }),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await expect(adapter.writeFile('/etc/test', 'data')).rejects.toThrow('writeFile failed');
+  });
+
+  it('readFile throws on exec error', async () => {
+    const mock = {
+      execFile: vi.fn(async () => { throw { exitCode: 1, stderr: 'no such file' }; }),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
+  });
+
+  it('exec returns error info when sprite.execFile throws', async () => {
+    const mock = {
+      execFile: vi.fn(async () => { throw { stdout: '', stderr: 'command not found', exitCode: 127 }; }),
+      delete: vi.fn(),
+    };
+    const adapter = sprites(mock);
+    const result = await adapter.exec('nonexistent', []);
+    expect(result.exitCode).toBe(127);
+    expect(result.stderr).toBe('command not found');
+  });
+
+  it('stop calls sprite.delete', async () => {
+    const mock = {
+      execFile: vi.fn(),
+      delete: vi.fn(async () => {}),
+    };
+    const adapter = sprites(mock);
     await adapter.stop!();
     expect(mock.delete).toHaveBeenCalled();
   });
