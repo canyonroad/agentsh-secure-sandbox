@@ -88,7 +88,6 @@ export async function provision(
     skipIntegrityCheck = false,
     minimumSecurityMode,
     realPaths: realPathsOverride,
-    enforceRedirects = false,
     traceParent,
     policyName = 'policy',
     threatFeeds,
@@ -274,9 +273,7 @@ export async function provision(
 
   // Step 9: Write server config
   const serverConfig = generateServerConfig({
-    workspace,
     watchtower,
-    enforceRedirects,
     realPaths,
     threatFeeds,
   });

@@ -2,9 +2,7 @@ import yaml from 'js-yaml';
 import type { ThreatFeedsConfig } from './types.js';
 
 export interface ServerConfigOpts {
-  workspace: string;
   watchtower?: string;
-  enforceRedirects?: boolean;
   realPaths?: boolean;
   threatFeeds?: false | ThreatFeedsConfig;
 }
@@ -59,15 +57,16 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       dir: '/etc/agentsh',
       default: 'policy',
     },
-    workspace: opts.workspace,
     sandbox: {
       enabled: true,
       allow_degraded: true,
+      fuse: { enabled: true },
+      network: { enabled: true },
+      seccomp: { enabled: true },
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;
-  if (opts.enforceRedirects) config.enforce_redirects = true;
-  if (opts.realPaths) config.real_paths = true;
+  if (opts.realPaths) config.sessions = { real_paths: true };
 
   // Threat feeds: enabled by default, opt-out with `threatFeeds: false`
   const feeds = opts.threatFeeds === false ? undefined : (opts.threatFeeds ?? defaultThreatFeeds);

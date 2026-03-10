@@ -4,52 +4,54 @@ import { generateServerConfig, defaultThreatFeeds } from './config.js';
 
 describe('generateServerConfig', () => {
   it('generates valid YAML with policy dirs', () => {
-    const result = generateServerConfig({ workspace: '/workspace' });
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.policies.system_dir).toBe('/etc/agentsh/system');
     expect(parsed.policies.dir).toBe('/etc/agentsh');
     expect(parsed.policies.default).toBe('policy');
   });
 
-  it('includes workspace path', () => {
-    const result = generateServerConfig({ workspace: '/home/daytona' });
+  it('does not include workspace in config', () => {
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
-    expect(parsed.workspace).toBe('/home/daytona');
+    expect(parsed.workspace).toBeUndefined();
   });
 
   it('includes watchtower when provided', () => {
-    const result = generateServerConfig({ workspace: '/workspace', watchtower: 'https://watchtower.example.com' });
+    const result = generateServerConfig({ watchtower: 'https://watchtower.example.com' });
     const parsed = yaml.load(result) as any;
     expect(parsed.watchtower).toBe('https://watchtower.example.com');
   });
 
   it('omits watchtower when not provided', () => {
-    const result = generateServerConfig({ workspace: '/workspace' });
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.watchtower).toBeUndefined();
   });
 
-  it('includes enforceRedirects when true', () => {
-    const result = generateServerConfig({ workspace: '/workspace', enforceRedirects: true });
+  it('includes realPaths nested under sessions', () => {
+    const result = generateServerConfig({ realPaths: true });
     const parsed = yaml.load(result) as any;
-    expect(parsed.enforce_redirects).toBe(true);
+    expect(parsed.sessions.real_paths).toBe(true);
   });
 
-  it('includes realPaths when true', () => {
-    const result = generateServerConfig({ workspace: '/workspace', realPaths: true });
+  it('omits sessions.real_paths when not set', () => {
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
-    expect(parsed.real_paths).toBe(true);
+    expect(parsed.sessions).toBeUndefined();
   });
 
-  it('omits enforce_redirects and real_paths when not set', () => {
-    const result = generateServerConfig({ workspace: '/workspace' });
+  it('enables sandbox subsections by default', () => {
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
-    expect(parsed.enforce_redirects).toBeUndefined();
-    expect(parsed.real_paths).toBeUndefined();
+    expect(parsed.sandbox.enabled).toBe(true);
+    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    expect(parsed.sandbox.network.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
   });
 
   it('includes default threat feeds when not specified', () => {
-    const result = generateServerConfig({ workspace: '/workspace' });
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.threat_feeds.enabled).toBe(true);
     expect(parsed.threat_feeds.action).toBe('deny');
@@ -60,14 +62,13 @@ describe('generateServerConfig', () => {
   });
 
   it('disables threat feeds when set to false', () => {
-    const result = generateServerConfig({ workspace: '/workspace', threatFeeds: false });
+    const result = generateServerConfig({ threatFeeds: false });
     const parsed = yaml.load(result) as any;
     expect(parsed.threat_feeds).toBeUndefined();
   });
 
   it('uses custom threat feeds when provided', () => {
     const result = generateServerConfig({
-      workspace: '/workspace',
       threatFeeds: {
         action: 'audit',
         feeds: [{ name: 'custom', url: 'https://example.com/list.txt', format: 'domain-list' }],

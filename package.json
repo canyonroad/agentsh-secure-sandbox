@@ -1,11 +1,12 @@
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/canyonroad/agentsh-secure-sandbox"
   },
+  "homepage": "https://www.agentsh.org/secure-sandbox/",
   "type": "module",
   "exports": {
     ".": {
