@@ -416,6 +416,19 @@ describe('provision', () => {
     });
   });
 
+  it('running strategy fails closed when minimumSecurityMode set without explicit securityMode', async () => {
+    const adapter = createMockAdapter();
+
+    await expect(
+      provision(adapter, {
+        installStrategy: 'running',
+        minimumSecurityMode: 'full',
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('set securityMode explicitly'),
+    });
+  });
+
   it('running strategy respects securityMode override', async () => {
     const adapter = createMockAdapter();
     const result = await provision(adapter, {

@@ -5,6 +5,7 @@ import { blaxel } from '../adapters/blaxel.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { agentDefault } from '../policies/presets.js';
 import { generateServerConfig } from '../core/config.js';
+import { CHECKSUMS } from '../core/integrity.js';
 import type { SecuredSandbox } from '../core/types.js';
 
 // @blaxel/core requires API credentials and network access.
@@ -43,8 +44,17 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
 
     // Download and install agentsh
     const version = '0.14.0';
+    const expectedChecksum = CHECKSUMS[version]?.linux_amd64;
     const url = `https://github.com/canyonroad/agentsh/releases/download/v${version}/agentsh_${version}_linux_amd64.tar.gz`;
     await rawExec(`wget -q ${url} -O /tmp/agentsh.tar.gz`);
+
+    // Verify checksum before extracting
+    const checksumResult = await rawExec(`sha256sum /tmp/agentsh.tar.gz | awk '{print $1}'`);
+    const actualChecksum = checksumResult.stdout.trim();
+    if (actualChecksum !== expectedChecksum) {
+      throw new Error(`Checksum mismatch: expected ${expectedChecksum}, got ${actualChecksum}`);
+    }
+
     await rawExec('tar xz -C /tmp/ -f /tmp/agentsh.tar.gz');
     await rawExec('install -m 0755 /tmp/agentsh /usr/local/bin/agentsh');
     await rawExec('install -m 0755 /tmp/agentsh-shell-shim /usr/bin/agentsh-shell-shim');
@@ -58,7 +68,7 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
 
     const policyB64 = Buffer.from(serializePolicy(agentDefault())).toString('base64');
     const systemB64 = Buffer.from(systemPolicyYaml()).toString('base64');
-    const configB64 = Buffer.from(generateServerConfig({ workspace: '/workspace', realPaths: true })).toString('base64');
+    const configB64 = Buffer.from(generateServerConfig({ realPaths: true })).toString('base64');
 
     await rawExec(`echo '${policyB64}' | base64 -d > /etc/agentsh/policy.yml`);
     await rawExec(`echo '${systemB64}' | base64 -d > /etc/agentsh/system/policy.yml`);
@@ -102,8 +112,13 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
   }, 120_000);
 
   afterAll(async () => {
+    // Best-effort cleanup — delete the sandbox we created.
     // Don't call secured.stop() — blaxel adapter.stop() calls sandbox.delete()
-    // which would destroy it. The sandbox will be cleaned up on next test run.
+    // which would fail if sandbox is already gone.
+    try {
+      const { SandboxInstance } = await import('@blaxel/core');
+      await SandboxInstance.delete('agentsh-blaxel');
+    } catch {}
   });
 
   // ─── Smoke tests ──────────────────────────────────────────

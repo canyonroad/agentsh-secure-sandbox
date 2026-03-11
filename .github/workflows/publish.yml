@@ -9,7 +9,6 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +28,15 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create GitHub release
-        run: gh release create "${{ github.ref_name }}" --generate-notes
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub release (idempotent)
+        run: gh release view "${{ github.ref_name }}" || gh release create "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

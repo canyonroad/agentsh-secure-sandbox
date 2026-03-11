@@ -114,7 +114,19 @@ export async function provision(
     // pre-provisioned environments typically have full capabilities.
     await healthCheck(adapter);
 
-    securityMode = config.securityMode ?? 'full';
+    if (config.securityMode) {
+      securityMode = config.securityMode;
+    } else if (minimumSecurityMode) {
+      // Fail closed: cannot verify security mode in 'running' strategy
+      // (agentsh detect is unavailable), so require explicit securityMode
+      // when minimumSecurityMode is set.
+      throw new ProvisioningError({
+        phase: 'install',
+        command: 'securityMode check',
+        stderr: `Cannot verify security mode in 'running' strategy — set securityMode explicitly when using minimumSecurityMode`,
+      });
+    }
+    // else: default to 'full' (pre-provisioned environments typically have full capabilities)
 
     if (minimumSecurityMode && isWeakerThan(securityMode, minimumSecurityMode)) {
       throw new ProvisioningError({
