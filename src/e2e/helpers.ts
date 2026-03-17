@@ -19,4 +19,6 @@ export const ENV = {
   SPRITES_ORG: process.env.SPRITES_ORG,
   SPRITES_NAME: process.env.SPRITES_NAME,
   FLY_API_TOKEN: process.env.FLY_API_TOKEN,
+  MODAL_TOKEN_ID: process.env.MODAL_TOKEN_ID,
+  MODAL_TOKEN_SECRET: process.env.MODAL_TOKEN_SECRET,
 };

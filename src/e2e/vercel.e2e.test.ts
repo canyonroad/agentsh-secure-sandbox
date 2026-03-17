@@ -48,7 +48,7 @@ describe.skipIf(!canRun)('Vercel E2E', () => {
   });
 
   it('reports a valid security mode', () => {
-    expect(['full', 'landlock', 'landlock-only', 'minimal']).toContain(
+    expect(['full', 'ptrace', 'landlock', 'landlock-only', 'minimal']).toContain(
       secured.securityMode,
     );
   });
