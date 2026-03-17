@@ -20,7 +20,8 @@ import { getTraceparent } from './traceparent.js';
 // ─── Security mode ordering (strongest to weakest) ────────────
 
 const SECURITY_MODE_RANK: Record<SecurityMode, number> = {
-  full: 4,
+  full: 5,
+  ptrace: 4,
   landlock: 3,
   'landlock-only': 2,
   minimal: 1,
@@ -591,7 +592,7 @@ async function detectSecurityMode(
   }
 
   const mode = parsed.security_mode;
-  const validModes: SecurityMode[] = ['full', 'landlock', 'landlock-only', 'minimal'];
+  const validModes: SecurityMode[] = ['full', 'ptrace', 'landlock', 'landlock-only', 'minimal'];
   if (!validModes.includes(mode as SecurityMode)) {
     throw new ProvisioningError({
       phase: 'install',

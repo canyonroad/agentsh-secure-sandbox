@@ -19,7 +19,7 @@ function createMockAdapter(
     curl: ok(),
     'tar xz': ok(),
     sha256sum: ok(
-      '89f7ebbfd75ffd961245ec62b2602fd0cc387740502ac858dbc39c367c5699c5',
+      '691a3684070874b2f6bce11da1106230b1ac76bc44462839001af94ca887013a',
     ),
     install: ok(),
     'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
@@ -247,7 +247,7 @@ describe('provision', () => {
     const adapter = createMockAdapter({
       uname: ok('aarch64'),
       sha256sum: ok(
-        '3fabbd749f9e98fb9f96ddfc94c389a6868cda7ed3668daa8440c39ceec85f3b',
+        '9a373ffd59140d6b26a73dfd8cff638309d94a0fcbf6dd8dbaf17fb7d7094912',
       ),
     });
     const result = await provision(adapter, {});
@@ -472,6 +472,50 @@ describe('provision', () => {
 
     await expect(provision(adapter, {})).rejects.toMatchObject({
       stderr: expect.stringContaining("Unknown security mode: 'unknown_mode'"),
+    });
+  });
+
+  it('accepts ptrace security mode from detect', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'ptrace' }), exitCode: 0 },
+    });
+    const result = await provision(adapter, {});
+
+    expect(result.securityMode).toBe('ptrace');
+    expect(result.sessionId).toBe('test-session-123');
+  });
+
+  it('ptrace mode does not auto-enable realPaths (no FUSE)', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'ptrace' }), exitCode: 0 },
+    });
+    await provision(adapter, {});
+
+    const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+    const configCall = writeCalls.find(
+      ([path]: [string]) => path === '/etc/agentsh/config.yml',
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall![1]).not.toContain('real_paths');
+  });
+
+  it('ptrace mode satisfies minimumSecurityMode landlock', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'ptrace' }), exitCode: 0 },
+    });
+    const result = await provision(adapter, { minimumSecurityMode: 'landlock' });
+    expect(result.securityMode).toBe('ptrace');
+  });
+
+  it('ptrace mode does not satisfy minimumSecurityMode full', async () => {
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'ptrace' }), exitCode: 0 },
+    });
+
+    await expect(
+      provision(adapter, { minimumSecurityMode: 'full' }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("weaker than required 'full'"),
     });
   });
 

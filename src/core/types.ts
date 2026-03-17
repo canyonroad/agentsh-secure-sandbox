@@ -18,7 +18,7 @@ export type ReadFileResult =
 
 // ─── Security & install enums ─────────────────────────────────
 
-export type SecurityMode = 'full' | 'landlock' | 'landlock-only' | 'minimal';
+export type SecurityMode = 'full' | 'ptrace' | 'landlock' | 'landlock-only' | 'minimal';
 
 export type InstallStrategy = 'preinstalled' | 'download' | 'upload' | 'running';
 

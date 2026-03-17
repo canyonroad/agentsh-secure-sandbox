@@ -361,6 +361,72 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.limits).toBeUndefined();
     expect(parsed.sandbox.cgroups).toBeUndefined();
     expect(parsed.sandbox.unix_sockets).toBeUndefined();
+    expect(parsed.sandbox.ptrace).toBeUndefined();
+    expect(parsed.sandbox.env_inject).toBeUndefined();
+  });
+
+  it('generates ptrace section with all fields', () => {
+    const result = generateServerConfig({
+      ptrace: {
+        enabled: true,
+        attachMode: 'children',
+        maskTracerPid: 'off',
+        trace: { execve: true, file: true, network: true, signal: true },
+        performance: { seccompPrefilter: false, maxTracees: 500, maxHoldMs: 5000 },
+        onAttachFailure: 'fail_open',
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.ptrace.enabled).toBe(true);
+    expect(parsed.sandbox.ptrace.attach_mode).toBe('children');
+    expect(parsed.sandbox.ptrace.mask_tracer_pid).toBe('off');
+    expect(parsed.sandbox.ptrace.trace).toEqual({ execve: true, file: true, network: true, signal: true });
+    expect(parsed.sandbox.ptrace.performance).toEqual({ seccomp_prefilter: false, max_tracees: 500, max_hold_ms: 5000 });
+    expect(parsed.sandbox.ptrace.on_attach_failure).toBe('fail_open');
+  });
+
+  it('generates ptrace with partial fields', () => {
+    const result = generateServerConfig({
+      ptrace: { enabled: true, trace: { execve: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.ptrace.enabled).toBe(true);
+    expect(parsed.sandbox.ptrace.trace).toEqual({ execve: true });
+    expect(parsed.sandbox.ptrace.attach_mode).toBeUndefined();
+  });
+
+  it('generates env_inject section', () => {
+    const result = generateServerConfig({
+      envInject: { BASH_ENV: '/usr/lib/agentsh/bash_startup.sh' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.env_inject).toEqual({ BASH_ENV: '/usr/lib/agentsh/bash_startup.sh' });
+  });
+
+  it('generates allow_degraded when set', () => {
+    const result = generateServerConfig({ allowDegraded: true });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.allow_degraded).toBe(true);
+  });
+
+  it('omits allow_degraded when not set', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.allow_degraded).toBeUndefined();
+  });
+
+  it('generates fuse deferred_marker_file and deferred_enable_command', () => {
+    const result = generateServerConfig({
+      fuse: {
+        deferred: true,
+        deferredMarkerFile: '/tmp/.agentsh-fuse-enabled',
+        deferredEnableCommand: ['/bin/chmod', '666', '/dev/fuse'],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.deferred).toBe(true);
+    expect(parsed.sandbox.fuse.deferred_marker_file).toBe('/tmp/.agentsh-fuse-enabled');
+    expect(parsed.sandbox.fuse.deferred_enable_command).toEqual(['/bin/chmod', '666', '/dev/fuse']);
   });
 });
 

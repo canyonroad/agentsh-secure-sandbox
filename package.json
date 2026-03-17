@@ -41,6 +41,10 @@
       "types": "./dist/adapters/sprites.d.ts",
       "import": "./dist/adapters/sprites.js"
     },
+    "./adapters/modal": {
+      "types": "./dist/adapters/modal.d.ts",
+      "import": "./dist/adapters/modal.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
