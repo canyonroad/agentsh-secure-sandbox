@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.15.0',            // agentsh binary version
+  agentshVersion: '0.16.1',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -101,6 +101,7 @@ The security level depends on what the sandbox kernel supports. `secureSandbox()
 | Mode | Enforcement | Typical Platform |
 |------|-------------|-----------------|
 | `full` | seccomp + FUSE + Landlock + network proxy | Full Linux with FUSE support (E2B, Daytona, Blaxel) |
+| `ptrace` | ptrace syscall interception + network proxy (exec, file, network, signal) | gVisor-based platforms (Modal) |
 | `landlock` | seccomp + Landlock + network proxy (no FUSE) | Firecracker VMs (Vercel, Cloudflare) |
 | `landlock-only` | Landlock filesystem restrictions only | Limited kernel support |
 | `minimal` | Policy evaluation only, no kernel enforcement | Containers without seccomp |
@@ -258,7 +259,7 @@ const sandbox = await secureSandbox(sprites(sprite), {
 
 ### Extended Server Config
 
-The `serverConfig` field on `SecureConfig` accepts additional server configuration sections that are merged into the generated `config.yml`. These are primarily useful for Sprites and other advanced deployments:
+The `serverConfig` field on `SecureConfig` accepts additional server configuration sections that are merged into the generated `config.yml`. These are primarily useful for Sprites, Modal, and other advanced deployments:
 
 | Section | Description |
 |---------|-------------|
@@ -268,11 +269,14 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `sessions` | Session base dir, limits, timeouts, cleanup |
 | `audit` | SQLite audit logging |
 | `sandboxLimits` | Memory, CPU, and process limits |
-| `fuse` | FUSE deferred mode |
+| `allowDegraded` | Start sandbox even if FUSE/seccomp fail (useful for gVisor) |
+| `fuse` | FUSE deferred mode, marker file, and enable command |
 | `networkIntercept` | Network intercept mode and proxy address |
 | `seccompDetails` | Execve filtering and file monitor |
 | `cgroups` | Cgroup isolation |
 | `unixSockets` | Unix socket support |
+| `ptrace` | Ptrace-based syscall interception (see [Ptrace Config](#ptrace-config)) |
+| `envInject` | Environment variables to inject into sandbox processes |
 | `proxy` | MITM proxy mode, port, and provider URLs |
 | `dlp` | Data loss prevention (redact mode, patterns) |
 | `policiesOverride` | Override default policies directory |
@@ -280,6 +284,76 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `metrics` | Prometheus metrics endpoint |
 | `health` | Health and readiness check paths |
 | `development` | Development mode flags |
+
+### Ptrace Config
+
+The `ptrace` section enables ptrace-based syscall interception, used on gVisor platforms where seccomp user-notify is unavailable. Ptrace is mutually exclusive with seccomp execve filtering and unix socket interception.
+
+```typescript
+serverConfig: {
+  ptrace: {
+    enabled: true,                    // Master switch (default: false)
+    attachMode: 'children',           // 'children' (PTRACE_SEIZE on children) or 'pid' (attach to specific PID)
+    maskTracerPid: 'off',             // Hide tracer PID from /proc/*/status ('off' only in v0.16.1)
+    trace: {
+      execve: true,                   // Intercept command execution (execve/execveat)
+      file: true,                     // Intercept file operations (openat, unlinkat, renameat2, etc.)
+      network: true,                  // Intercept network calls (connect, bind) + DNS proxy
+      signal: true,                   // Intercept signals (kill, tgkill, tkill)
+    },
+    performance: {
+      seccompPrefilter: false,        // BPF pre-filter for performance (disable on gVisor)
+      maxTracees: 500,                // Maximum concurrent traced threads
+      maxHoldMs: 5000,                // Maximum time to hold a syscall (ms)
+    },
+    onAttachFailure: 'fail_open',     // 'fail_open' (continue) or 'fail_closed' (abort)
+  },
+}
+```
+
+## Modal Adapter
+
+The Modal adapter wraps a Modal sandbox for use with gVisor-based sandboxes on [Modal](https://modal.com). Since gVisor doesn't support seccomp user-notify or Landlock, the adapter uses ptrace-based enforcement.
+
+```typescript
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { modal, modalDefaults } from '@agentsh/secure-sandbox/adapters/modal';
+
+const sandbox = await secureSandbox(modal(modalSandbox), {
+  ...modalDefaults(),
+  // your overrides
+});
+
+const result = await sandbox.exec('echo hello');
+await sandbox.stop(); // calls sandbox.terminate()
+```
+
+### `modal(sandbox)`
+
+Creates a `SandboxAdapter` from a Modal sandbox object. The sandbox must implement `exec(...args)` returning a process with `wait()`, `stdout.read()`, `stderr.read()`, and `returncode`. File operations use base64 encode/decode piped through `sh`. Modal containers run as root so the `sudo` flag is dropped.
+
+### `modalDefaults()`
+
+Returns Modal-optimized `Partial<SecureConfig>` with sensible defaults for gVisor/ptrace environments:
+
+- `installStrategy: 'download'` — download agentsh binary from GitHub releases
+- `realPaths: true` — use real host paths
+- **ptrace enabled** with all trace subsystems (execve, file, network, signal)
+- `seccompPrefilter: false` — gVisor blocks BPF injection
+- `allowDegraded: true` — graceful fallback for FUSE/seccomp
+- FUSE deferred with marker file
+- unix sockets and cgroups disabled (Modal handles resource limits)
+- DLP, audit logging, metrics, and health checks enabled
+
+Spread into your config and override as needed:
+
+```typescript
+const sandbox = await secureSandbox(modal(modalSandbox), {
+  ...modalDefaults(),
+  policy: myPolicy,
+  watchtower: 'https://watchtower.example.com',
+});
+```
 
 ## Custom Adapter
 

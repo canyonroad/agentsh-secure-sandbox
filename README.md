@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), and [Sprites](https://sprites.dev). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), and [Modal](https://modal.com). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -94,11 +94,12 @@ When you call `secureSandbox()`, the library:
 3. **Writes your policy** as YAML and starts the agentsh server
 4. **Returns a `SecuredSandbox`** where every `exec()`, `writeFile()`, and `readFile()` is mediated
 
-Enforcement happens at the **syscall level** — seccomp intercepts process execution, FUSE intercepts file I/O, and a network proxy filters outbound connections. There's no way for the agent to bypass it from userspace.
+Enforcement happens at the **syscall level** — seccomp intercepts process execution, FUSE intercepts file I/O, and a network proxy filters outbound connections. On gVisor-based platforms (like Modal), **ptrace** provides equivalent enforcement by intercepting `execve`, `openat`, `connect`, and signal syscalls. There's no way for the agent to bypass it from userspace.
 
 | Capability | What It Does |
 |------------|-------------|
 | **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run |
+| **ptrace** | Syscall-level interception via `PTRACE_SEIZE` — enforces exec, file, network, and signal policies on gVisor platforms where seccomp user-notify is unavailable |
 | **Landlock** | Kernel-level filesystem restrictions — denies access to paths like `~/.ssh`, `~/.aws` |
 | **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine |
 | **Network Proxy** | Filters outbound connections by domain and port — blocks exfiltration to unauthorized hosts |
@@ -106,14 +107,17 @@ Enforcement happens at the **syscall level** — seccomp intercepts process exec
 
 ## Supported Platforms
 
-| Provider | seccomp | Landlock | FUSE | Network Proxy | DLP | Security Mode |
-|----------|---------|----------|------|---------------|-----|---------------|
-| [**Vercel**](https://vercel.com/sandbox) | ✅ | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**E2B**](https://e2b.dev/) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Daytona**](https://www.daytona.io/) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Sprites**](https://sprites.dev) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
+| Provider | seccomp | ptrace | Landlock | FUSE | Network Proxy | DLP | Security Mode |
+|----------|---------|--------|----------|------|---------------|-----|---------------|
+| [**Vercel**](https://vercel.com/sandbox) | ✅ | — | ✅ | ❌ | ✅ | ✅ | `landlock` |
+| [**E2B**](https://e2b.dev/) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
+| [**Daytona**](https://www.daytona.io/) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
+| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | — | ✅ | ❌ | ✅ | ✅ | `landlock` |
+| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
+| [**Sprites**](https://sprites.dev) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
+| [**Modal**](https://modal.com) | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ | `ptrace` |
+
+> **Modal note:** Modal sandboxes run on gVisor, which doesn't support seccomp user-notify or Landlock. The `ptrace` security mode provides equivalent enforcement (~95% coverage) by intercepting syscalls via `PTRACE_SEIZE`. FUSE is available but deferred.
 
 ```typescript
 // E2B
@@ -138,6 +142,13 @@ import { SpritesClient } from '@fly/sprites';
 import { sprites } from '@agentsh/secure-sandbox/adapters/sprites';
 const client = new SpritesClient(process.env.SPRITES_TOKEN);
 const sandbox = await secureSandbox(sprites(client.sprite('my-sprite')));
+
+// Modal (gVisor sandboxes with ptrace enforcement)
+import { modal, modalDefaults } from '@agentsh/secure-sandbox/adapters/modal';
+const sandbox = await secureSandbox(modal(modalSandbox), {
+  ...modalDefaults(),
+  // your overrides
+});
 ```
 
 ## Default Policy
