@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.16.1',            // agentsh binary version
+  agentshVersion: '0.16.2',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -294,7 +294,7 @@ serverConfig: {
   ptrace: {
     enabled: true,                    // Master switch (default: false)
     attachMode: 'children',           // 'children' (PTRACE_SEIZE on children) or 'pid' (attach to specific PID)
-    maskTracerPid: 'off',             // Hide tracer PID from /proc/*/status ('off' only in v0.16.1)
+    maskTracerPid: 'off',             // Hide tracer PID from /proc/*/status ('off' only in v0.16.2)
     trace: {
       execve: true,                   // Intercept command execution (execve/execveat)
       file: true,                     // Intercept file operations (openat, unlinkat, renameat2, etc.)

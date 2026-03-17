@@ -82,15 +82,15 @@ describe('buildVerifyCommand', () => {
 
 describe('binaryUrl', () => {
   it('returns default GitHub URL', () => {
-    const url = binaryUrl('0.16.1', 'linux_amd64');
+    const url = binaryUrl('0.16.2', 'linux_amd64');
     expect(url).toBe(
-      'https://github.com/canyonroad/agentsh/releases/download/v0.16.1/agentsh_0.16.1_linux_amd64.tar.gz',
+      'https://github.com/canyonroad/agentsh/releases/download/v0.16.2/agentsh_0.16.2_linux_amd64.tar.gz',
     );
   });
 
   it('returns override URL when provided', () => {
     const override = 'https://my-mirror.example.com/agentsh.tar.gz';
-    const url = binaryUrl('0.16.1', 'linux_amd64', override);
+    const url = binaryUrl('0.16.2', 'linux_amd64', override);
     expect(url).toBe(override);
   });
 });

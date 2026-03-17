@@ -36,7 +36,7 @@ commands, which network destinations, with what verdicts).
 
 ### 1.2 Prerequisites
 
-This library requires **agentsh v0.16.1+** with support for:
+This library requires **agentsh v0.16.2+** with support for:
 
 - **Multi-layer policy evaluation** (`system_dir` config option) for the
   self-protection guarantee (see Section 9.4). If not yet implemented in
@@ -44,7 +44,7 @@ This library requires **agentsh v0.16.1+** with support for:
 - **Security modes** (`full`, `ptrace`, `landlock`, `landlock-only`, `minimal`) with
   auto-detection via `agentsh detect`.
 - **ptrace-based enforcement** — syscall interception via `PTRACE_SEIZE` for
-  gVisor platforms where seccomp user-notify is unavailable (v0.16.1).
+  gVisor platforms where seccomp user-notify is unavailable (v0.16.2).
 - **Path canonicalization** — resolves symlinks before policy evaluation,
   preventing `/proc/self/root` and symlink-based bypass attacks (v0.14.0).
 - **Transparent command unwrapping** — peels wrapper commands (`env`, `sudo`,
@@ -154,7 +154,7 @@ It does not bundle the binary in the npm package.
 | Setting               | Default                                                       | Override                      |
 | --------------------- | ------------------------------------------------------------- | ----------------------------- |
 | Binary source         | `github.com/canyonroad/agentsh/releases/download/{version}/`  | `AGENTSH_BINARY_URL` env var  |
-| Version               | Pinned per library release (currently `0.16.1`)               | `agentshVersion` in config    |
+| Version               | Pinned per library release (currently `0.16.2`)               | `agentshVersion` in config    |
 | Platform detection    | `uname -m` inside sandbox → `linux_amd64` or `linux_arm64`   | `agentshArch` in config       |
 | Checksum verification | SHA256, pinned per version in library source                  | `agentshChecksum` in config   |
 
@@ -168,11 +168,11 @@ pinned in the library source code. The verification flow:
 3. Compare against the pinned checksum.
 4. If mismatch, delete the file and throw `IntegrityError`.
 
-Checksums for v0.16.1 (from GitHub release assets):
+Checksums for v0.16.2 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: f042de2198acb31e57788b572817614a1d5332ed2714cf657037ee37d2486592
-linux_arm64.tar.gz: 6ec13f5bdaf15b3bd2d42a5ccd55a9d287754abbf76e3f06312da6f07a6ed28b
+linux_amd64.tar.gz: 06d7cf1ba347d7873189f020c9758dc43323ee5c26c4da36be11c0e56c987646
+linux_arm64.tar.gz: 6563ea077bd5fcc4935e8af7c311ab458831e2a80925314d234ba8143c94445b
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum
