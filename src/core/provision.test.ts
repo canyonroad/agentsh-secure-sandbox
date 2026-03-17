@@ -19,7 +19,7 @@ function createMockAdapter(
     curl: ok(),
     'tar xz': ok(),
     sha256sum: ok(
-      '06d7cf1ba347d7873189f020c9758dc43323ee5c26c4da36be11c0e56c987646',
+      'c02afbf587a0e1724c7f828a3949616c3f31a06ca2e2090a79191ab271073132',
     ),
     install: ok(),
     'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
@@ -247,7 +247,7 @@ describe('provision', () => {
     const adapter = createMockAdapter({
       uname: ok('aarch64'),
       sha256sum: ok(
-        '6563ea077bd5fcc4935e8af7c311ab458831e2a80925314d234ba8143c94445b',
+        'd125bd591f4051e5134162e969245ec48dfd3d5b1f67e0ed9ff1de6b431ef10b',
       ),
     });
     const result = await provision(adapter, {});
