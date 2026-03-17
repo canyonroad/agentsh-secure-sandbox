@@ -152,7 +152,7 @@ describe('provision', () => {
     expect(chownCalls[0][1]).toEqual(['-R', 'root:root', '/etc/agentsh/']);
   });
 
-  it('starts server detached with sudo', async () => {
+  it('starts server detached', async () => {
     const adapter = createMockAdapter();
     await provision(adapter, {});
 
@@ -292,7 +292,7 @@ describe('provision', () => {
     expect(configCall![1]).toContain('watchtower.example.com');
   });
 
-  it('auto-enables realPaths when security mode has FUSE (full)', async () => {
+  it('does not auto-enable realPaths when security mode has FUSE (full) — explicit opt-in required', async () => {
     const adapter = createMockAdapter({
       'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
     });
@@ -303,10 +303,10 @@ describe('provision', () => {
       ([path]: [string]) => path === '/etc/agentsh/config.yml',
     );
     expect(configCall).toBeDefined();
-    expect(configCall![1]).toContain('real_paths');
+    expect(configCall![1]).not.toContain('real_paths');
   });
 
-  it('auto-enables realPaths when security mode is landlock (FUSE)', async () => {
+  it('does not auto-enable realPaths for landlock mode — explicit opt-in required', async () => {
     const adapter = createMockAdapter({
       'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'landlock' }), exitCode: 0 },
     });
@@ -317,7 +317,7 @@ describe('provision', () => {
       ([path]: [string]) => path === '/etc/agentsh/config.yml',
     );
     expect(configCall).toBeDefined();
-    expect(configCall![1]).toContain('real_paths');
+    expect(configCall![1]).not.toContain('real_paths');
   });
 
   it('does not auto-enable realPaths for minimal mode (no FUSE)', async () => {
@@ -334,18 +334,18 @@ describe('provision', () => {
     expect(configCall![1]).not.toContain('real_paths');
   });
 
-  it('respects explicit realPaths=false even with FUSE', async () => {
+  it('respects explicit realPaths=true to enable it', async () => {
     const adapter = createMockAdapter({
       'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
     });
-    await provision(adapter, { realPaths: false });
+    await provision(adapter, { realPaths: true });
 
     const writeCalls = (adapter.writeFile as ReturnType<typeof vi.fn>).mock.calls;
     const configCall = writeCalls.find(
       ([path]: [string]) => path === '/etc/agentsh/config.yml',
     );
     expect(configCall).toBeDefined();
-    expect(configCall![1]).not.toContain('real_paths');
+    expect(configCall![1]).toContain('real_paths');
   });
 
   // ─── 'running' install strategy ─────────────────────────────

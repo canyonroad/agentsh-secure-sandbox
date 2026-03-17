@@ -123,13 +123,19 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     sandbox: {
       enabled: true,
       allow_degraded: opts.allowDegraded ?? true,
-      fuse: { enabled: true },
+      // FUSE disabled by default: when agentsh server runs as root and exec
+      // users are non-root (e.g. E2B, Daytona), the FUSE workspace-mnt is
+      // inaccessible to non-root users causing exec to fail with exit code 2.
+      // File policy is still enforced via landlock. Enable FUSE
+      // explicitly via serverConfig: { fuse: { enabled: true } } if needed.
+      fuse: { enabled: false },
       network: { enabled: true },
-      // When ptrace is enabled, disable seccomp to avoid mutual exclusivity
-      // conflict — ptrace intercepts execve/file/network at the syscall level,
-      // replacing seccomp's role. This matches gVisor environments (Modal)
-      // where seccomp user-notify is unavailable.
-      seccomp: { enabled: !opts.ptrace?.enabled },
+      // Seccomp NOTIFY disabled by default: many container environments
+      // (Daytona, E2B custom images) restrict the seccomp() syscall via their
+      // container seccomp profile, causing "install seccomp filter: operation
+      // canceled" on every exec. Policy is still enforced via landlock and
+      // network rules. When ptrace is enabled, seccomp is also incompatible.
+      seccomp: { enabled: false },
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;
@@ -201,9 +207,11 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.networkIntercept.proxyListenAddr) net.proxy_listen_addr = opts.networkIntercept.proxyListenAddr;
   }
 
-  // Seccomp details
+  // Seccomp details — providing seccompDetails implicitly enables seccomp
+  // (unless ptrace is also enabled, since they're mutually exclusive)
   if (opts.seccompDetails) {
     const sec = (config.sandbox as any).seccomp;
+    if (!opts.ptrace?.enabled) sec.enabled = true;
     if (opts.seccompDetails.execve !== undefined) sec.execve = opts.seccompDetails.execve;
     if (opts.seccompDetails.fileMonitor) {
       sec.file_monitor = {

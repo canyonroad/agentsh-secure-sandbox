@@ -43,13 +43,17 @@ describe('generateServerConfig', () => {
     expect(parsed.sessions.base_dir).toBe('/var/lib/agentsh/sessions');
   });
 
-  it('enables sandbox subsections by default', () => {
+  it('enables sandbox subsections by default (fuse and seccomp disabled by default)', () => {
     const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.enabled).toBe(true);
-    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    // FUSE is disabled by default to avoid workspace-mnt permission issues
+    // for non-root exec users (E2B, Daytona). Enable explicitly via fuse opts.
+    expect(parsed.sandbox.fuse.enabled).toBe(false);
     expect(parsed.sandbox.network.enabled).toBe(true);
-    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    // Seccomp NOTIFY is disabled by default: many container environments
+    // restrict the seccomp() syscall, causing exec failures.
+    expect(parsed.sandbox.seccomp.enabled).toBe(false);
   });
 
   it('includes default threat feeds when not specified', () => {
@@ -260,10 +264,10 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.limits).toEqual({ max_memory_mb: 512, max_cpu_percent: 80, max_processes: 100 });
   });
 
-  it('sets fuse.deferred', () => {
+  it('sets fuse.deferred (also enables fuse)', () => {
     const result = generateServerConfig({ fuse: { deferred: true } });
     const parsed = yaml.load(result) as any;
-    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    // deferred implies fuse is needed; config.ts merges into the fuse object
     expect(parsed.sandbox.fuse.deferred).toBe(true);
   });
 
