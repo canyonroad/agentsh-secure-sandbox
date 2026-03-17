@@ -17,7 +17,7 @@ describe.skipIf(!canRun)('E2B E2E', () => {
 
   beforeAll(async () => {
     const e2bMod = await import('e2b');
-    rawSandbox = await e2bMod.Sandbox.create({ timeoutMs: 600_000 });
+    rawSandbox = await e2bMod.Sandbox.create('agentsh-sandbox', { timeoutMs: 600_000 });
     const adapter = e2b(rawSandbox);
     secured = await secureSandbox(adapter);
   }, 180_000);

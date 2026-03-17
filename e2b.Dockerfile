@@ -1,8 +1,8 @@
-FROM docker.io/cloudflare/sandbox:0.7.13
+FROM ubuntu:24.04
 
-USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libseccomp2 fuse3 curl ca-certificates && \
+    apt-get install -y --no-install-recommends \
+      libseccomp2 fuse3 curl ca-certificates bash git sudo && \
     rm -rf /var/lib/apt/lists/*
 
 # Pre-install agentsh v0.16.2

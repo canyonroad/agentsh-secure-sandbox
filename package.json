@@ -66,6 +66,9 @@
     "test:e2e": "E2E=1 vitest run --config vitest.e2e.config.ts",
     "test:e2e:sprites": "npx tsx src/e2e/sprites-e2e-runner.ts",
     "test:e2e:modal": "npx tsx src/e2e/modal-e2e-runner.ts",
+    "build:images": "npx tsx scripts/build-sandbox-images.ts",
+    "build:images:e2b": "npx tsx scripts/build-sandbox-images.ts --provider e2b",
+    "build:images:cloudflare": "npx tsx scripts/build-sandbox-images.ts --provider cloudflare",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"

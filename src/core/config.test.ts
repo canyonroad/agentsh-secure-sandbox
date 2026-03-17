@@ -38,7 +38,9 @@ describe('generateServerConfig', () => {
   it('omits sessions.real_paths when not set', () => {
     const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
-    expect(parsed.sessions).toBeUndefined();
+    expect(parsed.sessions.real_paths).toBeUndefined();
+    // base_dir is always set to a writable location
+    expect(parsed.sessions.base_dir).toBe('/var/lib/agentsh/sessions');
   });
 
   it('enables sandbox subsections by default', () => {

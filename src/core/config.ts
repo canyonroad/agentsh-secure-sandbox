@@ -153,7 +153,12 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   if (opts.logging) config.logging = { ...opts.logging };
 
   // Sessions (merge realPaths + extended sessions)
-  const sessionsObj: Record<string, unknown> = {};
+  const sessionsObj: Record<string, unknown> = {
+    // Default sessions to a writable location outside /etc/agentsh (which is
+    // locked to 555/444 during provisioning). v0.16.2+ resolves workspace mount
+    // symlinks inside the sessions dir, which requires write access.
+    base_dir: '/var/lib/agentsh/sessions',
+  };
   if (opts.realPaths) sessionsObj.real_paths = true;
   if (opts.sessions) {
     if (opts.sessions.baseDir) sessionsObj.base_dir = opts.sessions.baseDir;

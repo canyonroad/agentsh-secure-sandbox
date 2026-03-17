@@ -344,8 +344,10 @@ export async function provision(
 
   // ─── Phase 3: Server Startup ────────────────────────────────
 
-  // Step 10b: Ensure workspace directory exists
-  await adapter.exec('mkdir', ['-p', workspace], { sudo: true });
+  // Step 10b: Ensure workspace and sessions directories exist
+  // Sessions dir needs 755 so non-root agentsh exec can lstat workspace-mnt
+  await adapter.exec('mkdir', ['-p', workspace, '/var/lib/agentsh/sessions'], { sudo: true });
+  await adapter.exec('chmod', ['755', '/var/lib/agentsh', '/var/lib/agentsh/sessions'], { sudo: true });
 
   // Step 11: Start server
   const serverResult = await adapter.exec(
@@ -399,7 +401,11 @@ export async function provision(
     }
   }
 
-  // Step 13b: Set trace context if traceParent is provided or OTEL span is active
+  // Step 13b: Make session dir readable by non-root users so agentsh exec
+  // (which runs unprivileged) can lstat the workspace-mnt symlink (v0.16.2+)
+  await adapter.exec('chmod', ['-R', '755', '/var/lib/agentsh/sessions/'], { sudo: true });
+
+  // Step 13c: Set trace context if traceParent is provided or OTEL span is active
   const effectiveTraceParent = traceParent ?? (await getTraceparent());
   if (effectiveTraceParent) {
     await adapter.exec('curl', [
