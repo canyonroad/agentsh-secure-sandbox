@@ -122,7 +122,7 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     },
     sandbox: {
       enabled: true,
-      ...(opts.allowDegraded !== undefined && { allow_degraded: opts.allowDegraded }),
+      allow_degraded: opts.allowDegraded ?? true,
       fuse: { enabled: true },
       network: { enabled: true },
       // When ptrace is enabled, disable seccomp to avoid mutual exclusivity

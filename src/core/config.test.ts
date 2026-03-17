@@ -405,16 +405,16 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.env_inject).toEqual({ BASH_ENV: '/usr/lib/agentsh/bash_startup.sh' });
   });
 
-  it('generates allow_degraded when set', () => {
-    const result = generateServerConfig({ allowDegraded: true });
+  it('defaults allow_degraded to true', () => {
+    const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.allow_degraded).toBe(true);
   });
 
-  it('omits allow_degraded when not set', () => {
-    const result = generateServerConfig({});
+  it('respects explicit allowDegraded: false', () => {
+    const result = generateServerConfig({ allowDegraded: false });
     const parsed = yaml.load(result) as any;
-    expect(parsed.sandbox.allow_degraded).toBeUndefined();
+    expect(parsed.sandbox.allow_degraded).toBe(false);
   });
 
   it('generates fuse deferred_marker_file and deferred_enable_command', () => {
