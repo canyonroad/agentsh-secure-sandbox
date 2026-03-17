@@ -125,7 +125,11 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       ...(opts.allowDegraded !== undefined && { allow_degraded: opts.allowDegraded }),
       fuse: { enabled: true },
       network: { enabled: true },
-      seccomp: { enabled: true },
+      // When ptrace is enabled, disable seccomp to avoid mutual exclusivity
+      // conflict — ptrace intercepts execve/file/network at the syscall level,
+      // replacing seccomp's role. This matches gVisor environments (Modal)
+      // where seccomp user-notify is unavailable.
+      seccomp: { enabled: !opts.ptrace?.enabled },
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;

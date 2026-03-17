@@ -383,6 +383,8 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.ptrace.trace).toEqual({ execve: true, file: true, network: true, signal: true });
     expect(parsed.sandbox.ptrace.performance).toEqual({ seccomp_prefilter: false, max_tracees: 500, max_hold_ms: 5000 });
     expect(parsed.sandbox.ptrace.on_attach_failure).toBe('fail_open');
+    // seccomp should be auto-disabled when ptrace is enabled
+    expect(parsed.sandbox.seccomp.enabled).toBe(false);
   });
 
   it('generates ptrace with partial fields', () => {

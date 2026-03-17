@@ -332,7 +332,7 @@ if (secured) {
   });
 
   await test('writeFile + readFile roundtrip', async () => {
-    const path = '/root/e2e-test-file.txt';
+    const path = '/workspace/e2e-test-file.txt';
     const content = 'e2e-roundtrip-' + Date.now();
 
     const writeResult = await secured!.writeFile(path, content);

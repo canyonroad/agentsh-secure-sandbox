@@ -171,8 +171,8 @@ pinned in the library source code. The verification flow:
 Checksums for v0.16.1 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: 691a3684070874b2f6bce11da1106230b1ac76bc44462839001af94ca887013a
-linux_arm64.tar.gz: 9a373ffd59140d6b26a73dfd8cff638309d94a0fcbf6dd8dbaf17fb7d7094912
+linux_amd64.tar.gz: f042de2198acb31e57788b572817614a1d5332ed2714cf657037ee37d2486592
+linux_arm64.tar.gz: 6ec13f5bdaf15b3bd2d42a5ccd55a9d287754abbf76e3f06312da6f07a6ed28b
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum

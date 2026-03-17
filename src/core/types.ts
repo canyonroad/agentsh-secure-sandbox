@@ -218,6 +218,13 @@ export interface SecureConfig {
   sessionId?: string;
 
   /**
+   * Skip shell shim installation. When ptrace enforcement is used,
+   * the shim is unnecessary — ptrace intercepts syscalls directly.
+   * Default: false.
+   */
+  skipShim?: boolean;
+
+  /**
    * Threat intelligence feeds for blocking known-malicious domains.
    * Default: enabled with URLhaus and Phishing.Database feeds.
    * Set to `false` to disable, or provide a custom ThreatFeedsConfig.

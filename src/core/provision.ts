@@ -93,6 +93,7 @@ export async function provision(
     policyName = 'policy',
     threatFeeds,
     packageChecks,
+    skipShim = false,
     serverConfig: extendedConfig,
   } = config;
 
@@ -234,24 +235,26 @@ export async function provision(
   const hasFuse = securityMode === 'full' || securityMode === 'landlock';
   const realPaths = realPathsOverride ?? hasFuse;
 
-  // Step 6: Install shell shim
-  const shimResult = await adapter.exec(
-    'agentsh',
-    [
-      'shim', 'install-shell',
-      '--root', '/',
-      '--shim', '/usr/bin/agentsh-shell-shim',
-      '--bash',
-      '--i-understand-this-modifies-the-host',
-    ],
-    { sudo: true },
-  );
-  if (shimResult.exitCode !== 0) {
-    throw new ProvisioningError({
-      phase: 'install',
-      command: 'agentsh shim install-shell',
-      stderr: shimResult.stderr,
-    });
+  // Step 6: Install shell shim (skip when ptrace handles enforcement)
+  if (!skipShim) {
+    const shimResult = await adapter.exec(
+      'agentsh',
+      [
+        'shim', 'install-shell',
+        '--root', '/',
+        '--shim', '/usr/bin/agentsh-shell-shim',
+        '--bash',
+        '--i-understand-this-modifies-the-host',
+      ],
+      { sudo: true },
+    );
+    if (shimResult.exitCode !== 0) {
+      throw new ProvisioningError({
+        phase: 'install',
+        command: 'agentsh shim install-shell',
+        stderr: shimResult.stderr,
+      });
+    }
   }
 
   // ─── Phase 2: Policy & Config ───────────────────────────────
