@@ -108,19 +108,32 @@ Enforcement happens at the **kernel level** — Landlock restricts filesystem ac
 
 ## Supported Platforms
 
-| Provider | Landlock | Network Proxy | seccomp¹ | FUSE¹ | ptrace | DLP | Security Mode |
-|----------|----------|---------------|----------|-------|--------|-----|---------------|
-| [**Vercel**](https://vercel.com/sandbox) | ✅ | ✅ | ⚠️ | ❌ | — | ✅ | `landlock` |
-| [**E2B**](https://e2b.dev/) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
-| [**Daytona**](https://www.daytona.io/) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
-| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | ✅ | ⚠️ | ❌ | — | ✅ | `landlock` |
-| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
-| [**Sprites**](https://sprites.dev) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
-| [**Modal**](https://modal.com) | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ | `ptrace` |
+Every provider gets the same protections — the enforcement mechanism adapts to what the kernel supports:
 
-> ¹ **seccomp** and **FUSE** are disabled by default for maximum compatibility across container environments. Many providers restrict the `seccomp()` syscall or run exec users as non-root (making root-owned FUSE mounts inaccessible). Enable explicitly via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`. Landlock and network proxy provide the primary enforcement layer.
+| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal |
+|------------|--------|-----|---------|------------|--------|---------|-------|
+| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Different platforms use different kernel mechanisms to achieve these protections:
+
+| Provider | Primary Enforcement | Security Mode |
+|----------|-------------------|---------------|
+| [**Vercel**](https://vercel.com/sandbox) | Landlock + network proxy + shell shim | `landlock` |
+| [**E2B**](https://e2b.dev/) | Landlock + network proxy + shell shim | `full` |
+| [**Daytona**](https://www.daytona.io/) | Landlock + network proxy + shell shim | `full` |
+| [**Cloudflare**](https://developers.cloudflare.com/containers/) | Landlock + network proxy + shell shim | `landlock` |
+| [**Blaxel**](https://blaxel.ai/sandbox) | Landlock + network proxy + shell shim | `full` |
+| [**Sprites**](https://sprites.dev) | Landlock + network proxy + shell shim | `full` |
+| [**Modal**](https://modal.com) | ptrace (execve + openat + connect + signal) + network proxy | `ptrace` |
+
+> **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
 >
-> **Modal note:** Modal sandboxes run on gVisor, which doesn't support seccomp user-notify or Landlock. The `ptrace` security mode provides equivalent enforcement (~95% coverage) by intercepting syscalls via `PTRACE_SEIZE`. FUSE is available but deferred.
+> **Modal:** gVisor doesn't support seccomp user-notify or Landlock. ptrace provides equivalent enforcement by intercepting syscalls via `PTRACE_SEIZE`.
 
 ```typescript
 // E2B
