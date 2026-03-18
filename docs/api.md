@@ -102,9 +102,11 @@ The security level depends on what the sandbox kernel supports. `secureSandbox()
 |------|-------------|-----------------|
 | `full` | seccomp + FUSE + Landlock + network proxy | Full Linux with FUSE support (E2B, Daytona, Blaxel) |
 | `ptrace` | ptrace syscall interception + network proxy (exec, file, network, signal) | gVisor-based platforms (Modal) |
-| `landlock` | seccomp + Landlock + network proxy (no FUSE) | Firecracker VMs (Vercel, Cloudflare) |
+| `landlock` | Landlock + network proxy (no FUSE) | Firecracker VMs (Vercel, Cloudflare) |
 | `landlock-only` | Landlock filesystem restrictions only | Limited kernel support |
 | `minimal` | Policy evaluation only, no kernel enforcement | Containers without seccomp |
+
+> **Note:** seccomp and FUSE are disabled by default for compatibility. The detected security mode reflects kernel capabilities, not the active config. Landlock and network proxy are the default enforcement layers. Enable seccomp/FUSE explicitly via `serverConfig` if your environment supports them.
 
 Use `minimumSecurityMode` to fail fast if the sandbox can't meet your security requirements:
 

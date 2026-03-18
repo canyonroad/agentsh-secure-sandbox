@@ -94,29 +94,32 @@ When you call `secureSandbox()`, the library:
 3. **Writes your policy** as YAML and starts the agentsh server
 4. **Returns a `SecuredSandbox`** where every `exec()`, `writeFile()`, and `readFile()` is mediated
 
-Enforcement happens at the **syscall level** — seccomp intercepts process execution, FUSE intercepts file I/O, and a network proxy filters outbound connections. On gVisor-based platforms (like Modal), **ptrace** provides equivalent enforcement by intercepting `execve`, `openat`, `connect`, and signal syscalls. There's no way for the agent to bypass it from userspace.
+Enforcement happens at the **kernel level** — Landlock restricts filesystem access, a network proxy filters outbound connections, and the shell shim mediates every command. On platforms that support it, **seccomp** intercepts process execution and **FUSE** intercepts file I/O at the syscall level. On gVisor-based platforms (like Modal), **ptrace** provides equivalent enforcement by intercepting `execve`, `openat`, `connect`, and signal syscalls. There's no way for the agent to bypass it from userspace.
 
 | Capability | What It Does |
 |------------|-------------|
-| **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run |
-| **ptrace** | Syscall-level interception via `PTRACE_SEIZE` — enforces exec, file, network, and signal policies on gVisor platforms where seccomp user-notify is unavailable |
 | **Landlock** | Kernel-level filesystem restrictions — denies access to paths like `~/.ssh`, `~/.aws` |
-| **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine |
 | **Network Proxy** | Filters outbound connections by domain and port — blocks exfiltration to unauthorized hosts |
+| **Shell Shim** | Replaces `/bin/bash` — mediates every command through the policy engine |
+| **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run (opt-in) |
+| **ptrace** | Syscall-level interception via `PTRACE_SEIZE` — enforces exec, file, network, and signal policies on gVisor platforms where seccomp user-notify is unavailable |
+| **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine (opt-in) |
 | **DLP** | Detects and redacts secrets (API keys, tokens) in command output |
 
 ## Supported Platforms
 
-| Provider | seccomp | ptrace | Landlock | FUSE | Network Proxy | DLP | Security Mode |
-|----------|---------|--------|----------|------|---------------|-----|---------------|
-| [**Vercel**](https://vercel.com/sandbox) | ✅ | — | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**E2B**](https://e2b.dev/) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Daytona**](https://www.daytona.io/) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | — | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Sprites**](https://sprites.dev) | ✅ | — | ✅ | ✅ | ✅ | ✅ | `full` |
+| Provider | Landlock | Network Proxy | seccomp¹ | FUSE¹ | ptrace | DLP | Security Mode |
+|----------|----------|---------------|----------|-------|--------|-----|---------------|
+| [**Vercel**](https://vercel.com/sandbox) | ✅ | ✅ | ⚠️ | ❌ | — | ✅ | `landlock` |
+| [**E2B**](https://e2b.dev/) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
+| [**Daytona**](https://www.daytona.io/) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
+| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | ✅ | ⚠️ | ❌ | — | ✅ | `landlock` |
+| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
+| [**Sprites**](https://sprites.dev) | ✅ | ✅ | ⚠️ | ⚠️ | — | ✅ | `full` |
 | [**Modal**](https://modal.com) | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ | `ptrace` |
 
+> ¹ **seccomp** and **FUSE** are disabled by default for maximum compatibility across container environments. Many providers restrict the `seccomp()` syscall or run exec users as non-root (making root-owned FUSE mounts inaccessible). Enable explicitly via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`. Landlock and network proxy provide the primary enforcement layer.
+>
 > **Modal note:** Modal sandboxes run on gVisor, which doesn't support seccomp user-notify or Landlock. The `ptrace` security mode provides equivalent enforcement (~95% coverage) by intercepting syscalls via `PTRACE_SEIZE`. FUSE is available but deferred.
 
 ```typescript

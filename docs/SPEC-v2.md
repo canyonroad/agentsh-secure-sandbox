@@ -184,8 +184,8 @@ explicitly or use `skipIntegrityCheck: true`."
 Checksums for v0.16.2 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: c02afbf587a0e1724c7f828a3949616c3f31a06ca2e2090a79191ab271073132
-linux_arm64.tar.gz: d125bd591f4051e5134162e969245ec48dfd3d5b1f67e0ed9ff1de6b431ef10b
+linux_amd64.tar.gz: 7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995
+linux_arm64.tar.gz: a48b3e4a60804cca98326619a68409e8ee83556d69ee2cf5d574e4361e0c19c6
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum
@@ -202,7 +202,7 @@ sandbox. This handles minimal container images that may not have all tools.
 ```json
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
