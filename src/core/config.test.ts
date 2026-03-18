@@ -38,16 +38,22 @@ describe('generateServerConfig', () => {
   it('omits sessions.real_paths when not set', () => {
     const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
-    expect(parsed.sessions).toBeUndefined();
+    expect(parsed.sessions.real_paths).toBeUndefined();
+    // base_dir is always set to a writable location
+    expect(parsed.sessions.base_dir).toBe('/var/lib/agentsh/sessions');
   });
 
-  it('enables sandbox subsections by default', () => {
+  it('enables sandbox subsections by default (fuse and seccomp disabled by default)', () => {
     const result = generateServerConfig({});
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.enabled).toBe(true);
-    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    // FUSE is disabled by default to avoid workspace-mnt permission issues
+    // for non-root exec users (E2B, Daytona). Enable explicitly via fuse opts.
+    expect(parsed.sandbox.fuse.enabled).toBe(false);
     expect(parsed.sandbox.network.enabled).toBe(true);
-    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    // Seccomp NOTIFY is disabled by default: many container environments
+    // restrict the seccomp() syscall, causing exec failures.
+    expect(parsed.sandbox.seccomp.enabled).toBe(false);
   });
 
   it('includes default threat feeds when not specified', () => {
@@ -258,10 +264,10 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.limits).toEqual({ max_memory_mb: 512, max_cpu_percent: 80, max_processes: 100 });
   });
 
-  it('sets fuse.deferred', () => {
+  it('sets fuse.deferred (also enables fuse)', () => {
     const result = generateServerConfig({ fuse: { deferred: true } });
     const parsed = yaml.load(result) as any;
-    expect(parsed.sandbox.fuse.enabled).toBe(true);
+    // deferred implies fuse is needed; config.ts merges into the fuse object
     expect(parsed.sandbox.fuse.deferred).toBe(true);
   });
 
@@ -361,6 +367,74 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.limits).toBeUndefined();
     expect(parsed.sandbox.cgroups).toBeUndefined();
     expect(parsed.sandbox.unix_sockets).toBeUndefined();
+    expect(parsed.sandbox.ptrace).toBeUndefined();
+    expect(parsed.sandbox.env_inject).toBeUndefined();
+  });
+
+  it('generates ptrace section with all fields', () => {
+    const result = generateServerConfig({
+      ptrace: {
+        enabled: true,
+        attachMode: 'children',
+        maskTracerPid: 'off',
+        trace: { execve: true, file: true, network: true, signal: true },
+        performance: { seccompPrefilter: false, maxTracees: 500, maxHoldMs: 5000 },
+        onAttachFailure: 'fail_open',
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.ptrace.enabled).toBe(true);
+    expect(parsed.sandbox.ptrace.attach_mode).toBe('children');
+    expect(parsed.sandbox.ptrace.mask_tracer_pid).toBe('off');
+    expect(parsed.sandbox.ptrace.trace).toEqual({ execve: true, file: true, network: true, signal: true });
+    expect(parsed.sandbox.ptrace.performance).toEqual({ seccomp_prefilter: false, max_tracees: 500, max_hold_ms: 5000 });
+    expect(parsed.sandbox.ptrace.on_attach_failure).toBe('fail_open');
+    // seccomp should be auto-disabled when ptrace is enabled
+    expect(parsed.sandbox.seccomp.enabled).toBe(false);
+  });
+
+  it('generates ptrace with partial fields', () => {
+    const result = generateServerConfig({
+      ptrace: { enabled: true, trace: { execve: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.ptrace.enabled).toBe(true);
+    expect(parsed.sandbox.ptrace.trace).toEqual({ execve: true });
+    expect(parsed.sandbox.ptrace.attach_mode).toBeUndefined();
+  });
+
+  it('generates env_inject section', () => {
+    const result = generateServerConfig({
+      envInject: { BASH_ENV: '/usr/lib/agentsh/bash_startup.sh' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.env_inject).toEqual({ BASH_ENV: '/usr/lib/agentsh/bash_startup.sh' });
+  });
+
+  it('defaults allow_degraded to true', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.allow_degraded).toBe(true);
+  });
+
+  it('respects explicit allowDegraded: false', () => {
+    const result = generateServerConfig({ allowDegraded: false });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.allow_degraded).toBe(false);
+  });
+
+  it('generates fuse deferred_marker_file and deferred_enable_command', () => {
+    const result = generateServerConfig({
+      fuse: {
+        deferred: true,
+        deferredMarkerFile: '/tmp/.agentsh-fuse-enabled',
+        deferredEnableCommand: ['/bin/chmod', '666', '/dev/fuse'],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.deferred).toBe(true);
+    expect(parsed.sandbox.fuse.deferred_marker_file).toBe('/tmp/.agentsh-fuse-enabled');
+    expect(parsed.sandbox.fuse.deferred_enable_command).toEqual(['/bin/chmod', '666', '/dev/fuse']);
   });
 });
 

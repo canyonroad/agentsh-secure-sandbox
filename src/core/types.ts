@@ -18,7 +18,7 @@ export type ReadFileResult =
 
 // ─── Security & install enums ─────────────────────────────────
 
-export type SecurityMode = 'full' | 'landlock' | 'landlock-only' | 'minimal';
+export type SecurityMode = 'full' | 'ptrace' | 'landlock' | 'landlock-only' | 'minimal';
 
 export type InstallStrategy = 'preinstalled' | 'download' | 'upload' | 'running';
 
@@ -216,6 +216,13 @@ export interface SecureConfig {
    * Use this when the sandbox exec API doesn't inherit shell profile env vars.
    */
   sessionId?: string;
+
+  /**
+   * Skip shell shim installation. When ptrace enforcement is used,
+   * the shim is unnecessary — ptrace intercepts syscalls directly.
+   * Default: false.
+   */
+  skipShim?: boolean;
 
   /**
    * Threat intelligence feeds for blocking known-malicious domains.

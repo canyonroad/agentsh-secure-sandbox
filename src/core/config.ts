@@ -12,11 +12,30 @@ export interface ServerConfigOpts {
   sessions?: { baseDir?: string; maxSessions?: number; defaultTimeout?: string; idleTimeout?: string; cleanupInterval?: string };
   audit?: { enabled?: boolean; sqlitePath?: string };
   sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
-  fuse?: { deferred?: boolean };
+  allowDegraded?: boolean;
+  fuse?: { deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
   seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean } };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
+  ptrace?: {
+    enabled?: boolean;
+    attachMode?: 'children' | 'pid';
+    maskTracerPid?: string;
+    trace?: {
+      execve?: boolean;
+      file?: boolean;
+      network?: boolean;
+      signal?: boolean;
+    };
+    performance?: {
+      seccompPrefilter?: boolean;
+      maxTracees?: number;
+      maxHoldMs?: number;
+    };
+    onAttachFailure?: 'fail_open' | 'fail_closed';
+  };
+  envInject?: Record<string, string>;
   proxy?: { mode?: string; port?: number; providers?: Record<string, string> };
   dlp?: { mode?: string; patterns?: Record<string, boolean>; customPatterns?: Array<{ name: string; display: string; regex: string }> };
   policiesOverride?: { dir?: string; defaultPolicy?: string };
@@ -103,10 +122,20 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     },
     sandbox: {
       enabled: true,
-      allow_degraded: true,
-      fuse: { enabled: true },
+      allow_degraded: opts.allowDegraded ?? true,
+      // FUSE disabled by default: when agentsh server runs as root and exec
+      // users are non-root (e.g. E2B, Daytona), the FUSE workspace-mnt is
+      // inaccessible to non-root users causing exec to fail with exit code 2.
+      // File policy is still enforced via landlock. Enable FUSE
+      // explicitly via serverConfig: { fuse: { enabled: true } } if needed.
+      fuse: { enabled: false },
       network: { enabled: true },
-      seccomp: { enabled: true },
+      // Seccomp NOTIFY disabled by default: many container environments
+      // (Daytona, E2B custom images) restrict the seccomp() syscall via their
+      // container seccomp profile, causing "install seccomp filter: operation
+      // canceled" on every exec. Policy is still enforced via landlock and
+      // network rules. When ptrace is enabled, seccomp is also incompatible.
+      seccomp: { enabled: false },
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;
@@ -130,7 +159,12 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   if (opts.logging) config.logging = { ...opts.logging };
 
   // Sessions (merge realPaths + extended sessions)
-  const sessionsObj: Record<string, unknown> = {};
+  const sessionsObj: Record<string, unknown> = {
+    // Default sessions to a writable location outside /etc/agentsh (which is
+    // locked to 555/444 during provisioning). v0.16.2+ resolves workspace mount
+    // symlinks inside the sessions dir, which requires write access.
+    base_dir: '/var/lib/agentsh/sessions',
+  };
   if (opts.realPaths) sessionsObj.real_paths = true;
   if (opts.sessions) {
     if (opts.sessions.baseDir) sessionsObj.base_dir = opts.sessions.baseDir;
@@ -159,8 +193,11 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   }
 
   // FUSE deferred
-  if (opts.fuse?.deferred !== undefined) {
-    (config.sandbox as any).fuse.deferred = opts.fuse.deferred;
+  if (opts.fuse) {
+    const fuseObj = (config.sandbox as any).fuse;
+    if (opts.fuse.deferred !== undefined) fuseObj.deferred = opts.fuse.deferred;
+    if (opts.fuse.deferredMarkerFile) fuseObj.deferred_marker_file = opts.fuse.deferredMarkerFile;
+    if (opts.fuse.deferredEnableCommand) fuseObj.deferred_enable_command = opts.fuse.deferredEnableCommand;
   }
 
   // Network intercept
@@ -170,9 +207,11 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.networkIntercept.proxyListenAddr) net.proxy_listen_addr = opts.networkIntercept.proxyListenAddr;
   }
 
-  // Seccomp details
+  // Seccomp details — providing seccompDetails implicitly enables seccomp
+  // (unless ptrace is also enabled, since they're mutually exclusive)
   if (opts.seccompDetails) {
     const sec = (config.sandbox as any).seccomp;
+    if (!opts.ptrace?.enabled) sec.enabled = true;
     if (opts.seccompDetails.execve !== undefined) sec.execve = opts.seccompDetails.execve;
     if (opts.seccompDetails.fileMonitor) {
       sec.file_monitor = {
@@ -190,6 +229,36 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   // Unix sockets
   if (opts.unixSockets) {
     (config.sandbox as any).unix_sockets = { ...opts.unixSockets };
+  }
+
+  // Ptrace
+  if (opts.ptrace) {
+    const ptraceObj: Record<string, unknown> = {};
+    if (opts.ptrace.enabled !== undefined) ptraceObj.enabled = opts.ptrace.enabled;
+    if (opts.ptrace.attachMode) ptraceObj.attach_mode = opts.ptrace.attachMode;
+    if (opts.ptrace.maskTracerPid) ptraceObj.mask_tracer_pid = opts.ptrace.maskTracerPid;
+    if (opts.ptrace.trace) {
+      const traceObj: Record<string, unknown> = {};
+      if (opts.ptrace.trace.execve !== undefined) traceObj.execve = opts.ptrace.trace.execve;
+      if (opts.ptrace.trace.file !== undefined) traceObj.file = opts.ptrace.trace.file;
+      if (opts.ptrace.trace.network !== undefined) traceObj.network = opts.ptrace.trace.network;
+      if (opts.ptrace.trace.signal !== undefined) traceObj.signal = opts.ptrace.trace.signal;
+      ptraceObj.trace = traceObj;
+    }
+    if (opts.ptrace.performance) {
+      const perfObj: Record<string, unknown> = {};
+      if (opts.ptrace.performance.seccompPrefilter !== undefined) perfObj.seccomp_prefilter = opts.ptrace.performance.seccompPrefilter;
+      if (opts.ptrace.performance.maxTracees !== undefined) perfObj.max_tracees = opts.ptrace.performance.maxTracees;
+      if (opts.ptrace.performance.maxHoldMs !== undefined) perfObj.max_hold_ms = opts.ptrace.performance.maxHoldMs;
+      ptraceObj.performance = perfObj;
+    }
+    if (opts.ptrace.onAttachFailure) ptraceObj.on_attach_failure = opts.ptrace.onAttachFailure;
+    (config.sandbox as any).ptrace = ptraceObj;
+  }
+
+  // Environment injection
+  if (opts.envInject) {
+    (config.sandbox as any).env_inject = { ...opts.envInject };
   }
 
   // Proxy

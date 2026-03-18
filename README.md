@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), and [Sprites](https://sprites.dev). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), and [Modal](https://modal.com). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -94,26 +94,46 @@ When you call `secureSandbox()`, the library:
 3. **Writes your policy** as YAML and starts the agentsh server
 4. **Returns a `SecuredSandbox`** where every `exec()`, `writeFile()`, and `readFile()` is mediated
 
-Enforcement happens at the **syscall level** — seccomp intercepts process execution, FUSE intercepts file I/O, and a network proxy filters outbound connections. There's no way for the agent to bypass it from userspace.
+Enforcement happens at the **kernel level** — Landlock restricts filesystem access, a network proxy filters outbound connections, and the shell shim mediates every command. On platforms that support it, **seccomp** intercepts process execution and **FUSE** intercepts file I/O at the syscall level. On gVisor-based platforms (like Modal), **ptrace** provides equivalent enforcement by intercepting `execve`, `openat`, `connect`, and signal syscalls. There's no way for the agent to bypass it from userspace.
 
 | Capability | What It Does |
 |------------|-------------|
-| **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run |
 | **Landlock** | Kernel-level filesystem restrictions — denies access to paths like `~/.ssh`, `~/.aws` |
-| **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine |
 | **Network Proxy** | Filters outbound connections by domain and port — blocks exfiltration to unauthorized hosts |
+| **Shell Shim** | Replaces `/bin/bash` — mediates every command through the policy engine |
+| **seccomp** | Intercepts process execution at the syscall level — blocks `sudo`, `env`, `nc` before they run (opt-in) |
+| **ptrace** | Syscall-level interception via `PTRACE_SEIZE` — enforces exec, file, network, and signal policies on gVisor platforms where seccomp user-notify is unavailable |
+| **FUSE** | Virtual filesystem layer — intercepts every file open/read/write, enables soft-delete quarantine (opt-in) |
 | **DLP** | Detects and redacts secrets (API keys, tokens) in command output |
 
 ## Supported Platforms
 
-| Provider | seccomp | Landlock | FUSE | Network Proxy | DLP | Security Mode |
-|----------|---------|----------|------|---------------|-----|---------------|
-| [**Vercel**](https://vercel.com/sandbox) | ✅ | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**E2B**](https://e2b.dev/) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Daytona**](https://www.daytona.io/) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Cloudflare**](https://developers.cloudflare.com/containers/) | ✅ | ✅ | ❌ | ✅ | ✅ | `landlock` |
-| [**Blaxel**](https://blaxel.ai/sandbox) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
-| [**Sprites**](https://sprites.dev) | ✅ | ✅ | ✅ | ✅ | ✅ | `full` |
+Every provider gets the same protections — the enforcement mechanism adapts to what the kernel supports:
+
+| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal |
+|------------|--------|-----|---------|------------|--------|---------|-------|
+| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Different platforms use different kernel mechanisms to achieve these protections:
+
+| Provider | Primary Enforcement | Security Mode |
+|----------|-------------------|---------------|
+| [**Vercel**](https://vercel.com/sandbox) | Landlock + network proxy + shell shim | `landlock` |
+| [**E2B**](https://e2b.dev/) | Landlock + network proxy + shell shim | `full` |
+| [**Daytona**](https://www.daytona.io/) | Landlock + network proxy + shell shim | `full` |
+| [**Cloudflare**](https://developers.cloudflare.com/containers/) | Landlock + network proxy + shell shim | `landlock` |
+| [**Blaxel**](https://blaxel.ai/sandbox) | Landlock + network proxy + shell shim | `full` |
+| [**Sprites**](https://sprites.dev) | Landlock + network proxy + shell shim | `full` |
+| [**Modal**](https://modal.com) | ptrace (execve + openat + connect + signal) + network proxy | `ptrace` |
+
+> **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
+>
+> **Modal:** gVisor doesn't support seccomp user-notify or Landlock. ptrace provides equivalent enforcement by intercepting syscalls via `PTRACE_SEIZE`.
 
 ```typescript
 // E2B
@@ -138,6 +158,13 @@ import { SpritesClient } from '@fly/sprites';
 import { sprites } from '@agentsh/secure-sandbox/adapters/sprites';
 const client = new SpritesClient(process.env.SPRITES_TOKEN);
 const sandbox = await secureSandbox(sprites(client.sprite('my-sprite')));
+
+// Modal (gVisor sandboxes with ptrace enforcement)
+import { modal, modalDefaults } from '@agentsh/secure-sandbox/adapters/modal';
+const sandbox = await secureSandbox(modal(modalSandbox), {
+  ...modalDefaults(),
+  // your overrides
+});
 ```
 
 ## Default Policy

@@ -15,7 +15,7 @@ function createFullMockAdapter(): SandboxAdapter {
       if (full.includes('sha256sum'))
         return {
           stdout:
-            '89f7ebbfd75ffd961245ec62b2602fd0cc387740502ac858dbc39c367c5699c5',
+            '7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995',
           stderr: '',
           exitCode: 0,
         };

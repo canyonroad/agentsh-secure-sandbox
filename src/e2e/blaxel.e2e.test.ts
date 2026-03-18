@@ -43,7 +43,7 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
     await rawExec('apk add --no-cache gcompat curl bash libseccomp');
 
     // Download and install agentsh
-    const version = '0.14.0';
+    const version = '0.16.2';
     const expectedChecksum = CHECKSUMS[version]?.linux_amd64;
     const url = `https://github.com/canyonroad/agentsh/releases/download/v${version}/agentsh_${version}_linux_amd64.tar.gz`;
     await rawExec(`wget -q ${url} -O /tmp/agentsh.tar.gz`);
@@ -129,7 +129,7 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
   });
 
   it('reports a valid security mode', () => {
-    expect(['full', 'landlock', 'landlock-only', 'minimal']).toContain(
+    expect(['full', 'ptrace', 'landlock', 'landlock-only', 'minimal']).toContain(
       secured.securityMode,
     );
   });

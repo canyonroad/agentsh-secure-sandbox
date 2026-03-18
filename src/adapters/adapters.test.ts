@@ -5,6 +5,7 @@ import { daytona } from './daytona.js';
 import { cloudflare } from './cloudflare.js';
 import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
+import { modal } from './modal.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -566,5 +567,140 @@ describe('sprites adapter', () => {
     const adapter = sprites(mock);
     await adapter.stop!();
     expect(mock.delete).toHaveBeenCalled();
+  });
+});
+
+describe('modal adapter', () => {
+  it('maps exec to sandbox.exec with sh -c', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => 'out') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = {
+      exec: vi.fn(async () => proc),
+      terminate: vi.fn(),
+    };
+    const adapter = modal(mock);
+    const result = await adapter.exec('echo', ['hello world']);
+    expect(mock.exec).toHaveBeenCalledWith('sh', '-c', expect.stringContaining('echo'));
+    expect(result.stdout).toBe('out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('drops sudo flag (Modal runs as root)', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.exec).toHaveBeenCalledWith(
+      'sh', '-c', expect.stringMatching(/^chmod /),
+    );
+  });
+
+  it('detached returns immediately with exitCode 0', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    const result = await adapter.exec('server', ['start'], { detached: true });
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('includes env vars in command', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.exec).toHaveBeenCalledWith(
+      'sh', '-c', expect.stringContaining('TRACEPARENT=00-abc-def-01'),
+    );
+  });
+
+  it('writeFile uses base64 approach', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    await adapter.writeFile('/workspace/test.txt', 'hello');
+    expect(mock.exec).toHaveBeenCalledWith('sh', '-c', expect.stringContaining('base64'));
+  });
+
+  it('readFile uses cat', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => 'file content') },
+      stderr: { read: vi.fn(async () => '') },
+      returncode: 0,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    const content = await adapter.readFile('/workspace/test.txt');
+    expect(mock.exec).toHaveBeenCalledWith('sh', '-c', expect.stringContaining('cat'));
+    expect(content).toBe('file content');
+  });
+
+  it('writeFile throws on non-zero exit', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => 'permission denied') },
+      returncode: 1,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    await expect(adapter.writeFile('/etc/test', 'data')).rejects.toThrow('writeFile failed');
+  });
+
+  it('readFile throws on non-zero exit', async () => {
+    const proc = {
+      wait: vi.fn(async () => {}),
+      stdout: { read: vi.fn(async () => '') },
+      stderr: { read: vi.fn(async () => 'no such file') },
+      returncode: 1,
+    };
+    const mock = { exec: vi.fn(async () => proc), terminate: vi.fn() };
+    const adapter = modal(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
+  });
+
+  it('exec returns error info when sandbox.exec throws', async () => {
+    const mock = {
+      exec: vi.fn(async () => { throw { stdout: '', stderr: 'command not found', returncode: 127 }; }),
+      terminate: vi.fn(),
+    };
+    const adapter = modal(mock);
+    const result = await adapter.exec('nonexistent', []);
+    expect(result.exitCode).toBe(127);
+    expect(result.stderr).toBe('command not found');
+  });
+
+  it('stop calls sandbox.terminate', async () => {
+    const mock = {
+      exec: vi.fn(),
+      terminate: vi.fn(async () => {}),
+    };
+    const adapter = modal(mock);
+    await adapter.stop!();
+    expect(mock.terminate).toHaveBeenCalled();
   });
 });

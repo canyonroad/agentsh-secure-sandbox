@@ -20,7 +20,8 @@ import { getTraceparent } from './traceparent.js';
 // ─── Security mode ordering (strongest to weakest) ────────────
 
 const SECURITY_MODE_RANK: Record<SecurityMode, number> = {
-  full: 4,
+  full: 5,
+  ptrace: 4,
   landlock: 3,
   'landlock-only': 2,
   minimal: 1,
@@ -92,6 +93,7 @@ export async function provision(
     policyName = 'policy',
     threatFeeds,
     packageChecks,
+    skipShim = false,
     serverConfig: extendedConfig,
   } = config;
 
@@ -168,8 +170,18 @@ export async function provision(
     }
     // Binary exists and strategy is preinstalled, skip to detect
   } else if (installStrategy === 'download' || installStrategy === 'upload') {
-    // If binary already exists, skip installation but still detect
-    if (!exists) {
+    // For 'download'/'upload': install if binary is missing OR version doesn't match.
+    // This prevents using a pre-installed incompatible version (e.g. Daytona default
+    // images may ship with an older agentsh that lacks --output json support).
+    let needsInstall = !exists;
+    if (exists && agentshVersion !== 'skip-version-check') {
+      const versionResult = await adapter.exec('agentsh', ['--version']);
+      const installedVersion = versionResult.stdout.trim().replace(/^v/, '');
+      if (!installedVersion.startsWith(agentshVersion)) {
+        needsInstall = true;
+      }
+    }
+    if (needsInstall) {
       // Step 2: Detect architecture
       const arch =
         archOverride ?? await detectArch(adapter);
@@ -228,29 +240,32 @@ export async function provision(
     });
   }
 
-  // Auto-enable realPaths when FUSE is available (full or landlock modes),
-  // unless the user explicitly set it.
-  const hasFuse = securityMode === 'full' || securityMode === 'landlock';
-  const realPaths = realPathsOverride ?? hasFuse;
+  // realPaths: only enable when the caller explicitly opts in, or when FUSE
+  // is enabled in the server config. With FUSE disabled by default (to avoid
+  // workspace-mnt permission issues for non-root exec users), real_paths is
+  // disabled by default too — exec uses /workspace directly.
+  const realPaths = realPathsOverride ?? false;
 
-  // Step 6: Install shell shim
-  const shimResult = await adapter.exec(
-    'agentsh',
-    [
-      'shim', 'install-shell',
-      '--root', '/',
-      '--shim', '/usr/bin/agentsh-shell-shim',
-      '--bash',
-      '--i-understand-this-modifies-the-host',
-    ],
-    { sudo: true },
-  );
-  if (shimResult.exitCode !== 0) {
-    throw new ProvisioningError({
-      phase: 'install',
-      command: 'agentsh shim install-shell',
-      stderr: shimResult.stderr,
-    });
+  // Step 6: Install shell shim (skip when ptrace handles enforcement)
+  if (!skipShim) {
+    const shimResult = await adapter.exec(
+      'agentsh',
+      [
+        'shim', 'install-shell',
+        '--root', '/',
+        '--shim', '/usr/bin/agentsh-shell-shim',
+        '--bash',
+        '--i-understand-this-modifies-the-host',
+      ],
+      { sudo: true },
+    );
+    if (shimResult.exitCode !== 0) {
+      throw new ProvisioningError({
+        phase: 'install',
+        command: 'agentsh shim install-shell',
+        stderr: shimResult.stderr,
+      });
+    }
   }
 
   // ─── Phase 2: Policy & Config ───────────────────────────────
@@ -340,10 +355,22 @@ export async function provision(
 
   // ─── Phase 3: Server Startup ────────────────────────────────
 
-  // Step 10b: Ensure workspace directory exists
-  await adapter.exec('mkdir', ['-p', workspace], { sudo: true });
+  // Step 10b: Ensure workspace and sessions directories exist
+  // Sessions dir needs 755 so non-root agentsh exec can lstat workspace-mnt
+  await adapter.exec('mkdir', ['-p', workspace, '/var/lib/agentsh/sessions'], { sudo: true });
+  await adapter.exec('chmod', ['755', '/var/lib/agentsh', '/var/lib/agentsh/sessions'], { sudo: true });
 
-  // Step 11: Start server
+  // Allow non-root users to access FUSE mounts created by root (agentsh server).
+  // user_allow_other in fuse.conf permits mounting with -o allow_other, which
+  // agentsh uses so that the session's workspace-mnt is accessible to the exec user.
+  await adapter.exec('sh', [
+    '-c',
+    'grep -q user_allow_other /etc/fuse.conf 2>/dev/null || echo "user_allow_other" >> /etc/fuse.conf',
+  ], { sudo: true });
+
+  // Step 11: Start server. Run with sudo so it can bind FUSE, seccomp, etc.
+  // v0.16.2 fixes the lstat issue for workspace-mnt so non-root exec can
+  // access session directories. The chmod -R 755 below ensures accessibility.
   const serverResult = await adapter.exec(
     'agentsh',
     ['server', '--config', '/etc/agentsh/config.yml'],
@@ -395,7 +422,11 @@ export async function provision(
     }
   }
 
-  // Step 13b: Set trace context if traceParent is provided or OTEL span is active
+  // Step 13b: Make session dir readable by non-root users so agentsh exec
+  // (which runs unprivileged) can lstat the workspace-mnt symlink (v0.16.2+)
+  await adapter.exec('chmod', ['-R', '755', '/var/lib/agentsh/sessions/'], { sudo: true });
+
+  // Step 13c: Set trace context if traceParent is provided or OTEL span is active
   const effectiveTraceParent = traceParent ?? (await getTraceparent());
   if (effectiveTraceParent) {
     await adapter.exec('curl', [
@@ -591,7 +622,7 @@ async function detectSecurityMode(
   }
 
   const mode = parsed.security_mode;
-  const validModes: SecurityMode[] = ['full', 'landlock', 'landlock-only', 'minimal'];
+  const validModes: SecurityMode[] = ['full', 'ptrace', 'landlock', 'landlock-only', 'minimal'];
   if (!validModes.includes(mode as SecurityMode)) {
     throw new ProvisioningError({
       phase: 'install',

@@ -36,15 +36,17 @@ commands, which network destinations, with what verdicts).
 
 ### 1.2 Prerequisites
 
-This library requires **agentsh v0.14.0+** with support for:
+This library requires **agentsh v0.16.2+** with support for:
 
 - **Multi-layer policy evaluation** (`system_dir` config option) for the
   self-protection guarantee (see Section 9.4).
   **STATUS: BLOCKER** — if not yet implemented in agentsh core, this
   feature must be added before this library ships v0.1. The self-protection
   guarantee is the foundation of the security model.
-- **Security modes** (`full`, `landlock`, `landlock-only`, `minimal`) with
+- **Security modes** (`full`, `ptrace`, `landlock`, `landlock-only`, `minimal`) with
   auto-detection via `agentsh detect`.
+- **ptrace-based enforcement** — syscall interception via `PTRACE_SEIZE` for
+  gVisor platforms where seccomp user-notify is unavailable (v0.16.2).
 - **Path canonicalization** — resolves symlinks before policy evaluation,
   preventing `/proc/self/root` and symlink-based bypass attacks.
 - **Transparent command unwrapping** — peels wrapper commands (`env`, `sudo`,
@@ -160,7 +162,7 @@ It does not bundle the binary in the npm package.
 | Setting               | Default                                                       | Override                      |
 | --------------------- | ------------------------------------------------------------- | ----------------------------- |
 | Binary source         | `github.com/canyonroad/agentsh/releases/download/{version}/`  | `AGENTSH_BINARY_URL` env var  |
-| Version               | Pinned per library release (currently `0.14.0`)               | `agentshVersion` in config    |
+| Version               | Pinned per library release (currently `0.16.2`)               | `agentshVersion` in config    |
 | Platform detection    | `uname -m` inside sandbox → `linux_amd64` or `linux_arm64`   | `agentshArch` in config       |
 | Checksum verification | SHA256, pinned per version in library source                  | `agentshChecksum` in config   |
 
@@ -179,13 +181,11 @@ the library throws `IntegrityError` with the message:
 "No pinned checksum for agentsh vX.Y.Z. Provide `agentshChecksum`
 explicitly or use `skipIntegrityCheck: true`."
 
-Checksums for v0.14.0 (from GitHub release assets):
+Checksums for v0.16.2 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: 2ab8ba0d6637fe1a5badf840c3db197161a6f9865d721ed216029d229b1b9bbc
-linux_arm64.tar.gz: 929d18dd9fe36e9b2fa830d7ae64b4fb481853e743ade8674fcfcdc73470ed53
-linux_amd64.deb:    65deb2f557dcf4e72c15c324b42a22ec159e04754f773829ce47546562652c7f
-linux_arm64.deb:    e3980e3c110d6b5ab42a656ea6705d33d7181c155342ad276bfc09035407ee4a
+linux_amd64.tar.gz: 7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995
+linux_arm64.tar.gz: a48b3e4a60804cca98326619a68409e8ee83556d69ee2cf5d574e4361e0c19c6
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum
@@ -202,7 +202,7 @@ sandbox. This handles minimal container images that may not have all tools.
 ```json
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
@@ -302,10 +302,10 @@ interface SecureConfig {
   /**
    * Minimum acceptable security mode. If `agentsh detect` reports a
    * weaker mode, provisioning fails with ProvisioningError.
-   * Modes from strongest to weakest: 'full', 'landlock', 'landlock-only', 'minimal'.
+   * Modes from strongest to weakest: 'full', 'ptrace', 'landlock', 'landlock-only', 'minimal'.
    * Default: undefined (accept any mode, log warning if degraded).
    */
-  minimumSecurityMode?: 'full' | 'landlock' | 'landlock-only' | 'minimal';
+  minimumSecurityMode?: 'full' | 'ptrace' | 'landlock' | 'landlock-only' | 'minimal';
 
   /**
    * Use real host paths instead of virtualizing under /workspace.
@@ -1078,7 +1078,7 @@ Step  Action                                                  Condition
 
   5b  Detect security capabilities:
       adapter.exec('agentsh detect --json')
-      → Parse JSON → determine security mode (full/landlock/landlock-only/minimal)
+      → Parse JSON → determine security mode (full/ptrace/landlock/landlock-only/minimal)
       → If mode is 'minimal', log warning (limited enforcement)
       → If config.minimumSecurityMode is set and detected mode is weaker, throw ProvisioningError
 
