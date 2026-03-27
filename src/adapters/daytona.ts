@@ -1,5 +1,7 @@
-import type { SandboxAdapter } from '../core/types.js';
+import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { agentDefault } from '../policies/presets.js';
+import { mergePrepend } from '../policies/merge.js';
 
 let stderrCounter = 0;
 
@@ -46,4 +48,39 @@ export function daytona(sandbox: any): SandboxAdapter {
       // which the adapter doesn't hold. This is a no-op.
     },
   };
+}
+
+/**
+ * Returns Daytona-optimized defaults for SecureConfig.
+ *
+ * Extends agentDefault() with Daytona-specific paths:
+ * - /home/daytona/** home directory
+ * - Broad /etc read (Daytona VMs have safe /etc)
+ * - /dev/** and /run/** access
+ * - GitLab and Bitbucket network access
+ * - Daytona API network access
+ */
+export function daytonaDefaults(): Partial<SecureConfig> {
+  const policy = mergePrepend(agentDefault(), {
+    file: [
+      // Daytona home directory
+      { allow: ['/home/daytona', '/home/daytona/**'], ops: ['read', 'write', 'create', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: ['/home/daytona/**', '/workspace/**'] },
+      // Broad /etc read
+      { allow: ['/etc', '/etc/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // Device and runtime files
+      { allow: '/dev/**', ops: ['read', 'write', 'open', 'stat', 'list', 'readlink'] },
+      { allow: '/run/**', ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+    ],
+    network: [
+      // GitLab
+      { allow: ['gitlab.com', '*.gitlab.com'], ports: [443, 22] },
+      // Bitbucket
+      { allow: ['bitbucket.org', '*.bitbucket.org'], ports: [443, 22] },
+      // Daytona API
+      { allow: ['app.daytona.io', '*.daytona.io', 'api.daytona.io'], ports: [443] },
+    ],
+  });
+
+  return { policy };
 }

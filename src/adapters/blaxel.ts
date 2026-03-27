@@ -1,5 +1,7 @@
-import type { SandboxAdapter } from '../core/types.js';
+import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { agentDefault } from '../policies/presets.js';
+import { mergePrepend } from '../policies/merge.js';
 
 export function blaxel(sandbox: any): SandboxAdapter {
   return {
@@ -56,4 +58,40 @@ export function blaxel(sandbox: any): SandboxAdapter {
       await sandbox.delete();
     },
   };
+}
+
+/**
+ * Returns Blaxel-optimized defaults for SecureConfig.
+ *
+ * Extends agentDefault() with Blaxel-specific paths:
+ * - /app/** workspace (Blaxel uses /app instead of /workspace)
+ * - /root/** read access
+ * - Broader /proc and /sys read access
+ * - /dev/**, /run/**, /var/log/** access
+ * - Broad /etc read
+ */
+export function blaxelDefaults(): Partial<SecureConfig> {
+  const policy = mergePrepend(agentDefault(), {
+    file: [
+      // Blaxel workspace at /app
+      { allow: ['/app', '/app/**'], ops: ['read', 'write', 'create', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: ['/app', '/app/**'] },
+      // Root home read access
+      { allow: ['/root', '/root/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // Broad /etc read
+      { allow: ['/etc', '/etc/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // Full /proc read (Blaxel needs process introspection)
+      { allow: '/proc/**', ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // /sys read (system info)
+      { allow: '/sys/**', ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // Device files — full access
+      { allow: '/dev/**', ops: ['read', 'write', 'open', 'stat'] },
+      // Runtime state
+      { allow: '/run/**', ops: ['read', 'open', 'stat', 'list'] },
+      // Log files
+      { allow: '/var/log/**', ops: ['read', 'write', 'open', 'stat', 'list'] },
+    ],
+  });
+
+  return { policy };
 }

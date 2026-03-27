@@ -86,6 +86,55 @@ describe('serializePolicy', () => {
     expect(parsed.network_rules[1].decision).toBe('deny');
   });
 
+  it('serializes network allowCidrs rule', () => {
+    const result = serializePolicy({
+      network: [{ allowCidrs: ['127.0.0.1/32', '::1/128'] }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.network_rules).toHaveLength(1);
+    expect(parsed.network_rules[0].cidrs).toEqual(['127.0.0.1/32', '::1/128']);
+    expect(parsed.network_rules[0].decision).toBe('allow');
+    expect(parsed.network_rules[0].domains).toBeUndefined();
+  });
+
+  it('serializes network allowCidrs with ports', () => {
+    const result = serializePolicy({
+      network: [{ allowCidrs: ['10.0.0.0/8'], ports: [443] }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.network_rules[0].cidrs).toEqual(['10.0.0.0/8']);
+    expect(parsed.network_rules[0].ports).toEqual([443]);
+    expect(parsed.network_rules[0].decision).toBe('allow');
+  });
+
+  it('serializes network denyCidrs rule', () => {
+    const result = serializePolicy({
+      network: [{ denyCidrs: ['169.254.169.254/32', '100.100.100.200/32'] }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.network_rules).toHaveLength(1);
+    expect(parsed.network_rules[0].cidrs).toEqual(['169.254.169.254/32', '100.100.100.200/32']);
+    expect(parsed.network_rules[0].decision).toBe('deny');
+    expect(parsed.network_rules[0].domains).toBeUndefined();
+  });
+
+  it('serializes mixed CIDR and domain network rules', () => {
+    const result = serializePolicy({
+      network: [
+        { allowCidrs: ['127.0.0.1/32'] },
+        { allow: ['registry.npmjs.org'], ports: [443] },
+        { denyCidrs: ['169.254.169.254/32'] },
+        { deny: '*' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.network_rules).toHaveLength(4);
+    expect(parsed.network_rules[0].cidrs).toEqual(['127.0.0.1/32']);
+    expect(parsed.network_rules[1].domains).toEqual(['registry.npmjs.org']);
+    expect(parsed.network_rules[2].cidrs).toEqual(['169.254.169.254/32']);
+    expect(parsed.network_rules[3].domains).toEqual(['*']);
+  });
+
   it('serializes env rules', () => {
     const result = serializePolicy({
       env: [{ commands: ['node'], allow: ['PATH'], deny: ['SECRET'] }],

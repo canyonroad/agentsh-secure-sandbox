@@ -1,19 +1,19 @@
 import { IntegrityError } from './errors.js';
 
-export const PINNED_VERSION = '0.16.2';
+export const PINNED_VERSION = '0.16.9';
 
 export const CHECKSUMS: Record<string, Record<string, string>> = {
+  '0.16.9': {
+    linux_amd64:
+      '6928a92ab040ca014be21f08f6d5df177d66685c85d62a82758511a7312b2795',
+    linux_arm64:
+      'a1cf889aa43d6cf959e700d2a936616d1e18c2dd83ef18681f194ee77934bb0a',
+  },
   '0.16.2': {
     linux_amd64:
       '7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995',
     linux_arm64:
       'a48b3e4a60804cca98326619a68409e8ee83556d69ee2cf5d574e4361e0c19c6',
-  },
-  '0.15.0': {
-    linux_amd64:
-      '89f7ebbfd75ffd961245ec62b2602fd0cc387740502ac858dbc39c367c5699c5',
-    linux_arm64:
-      '3fabbd749f9e98fb9f96ddfc94c389a6868cda7ed3668daa8440c39ceec85f3b',
   },
 };
 

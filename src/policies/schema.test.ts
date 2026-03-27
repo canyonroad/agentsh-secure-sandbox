@@ -68,6 +68,42 @@ describe('PolicyDefinitionSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts network allowCidrs rule', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allowCidrs: ['127.0.0.1/32', '::1/128'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts network allowCidrs with ports', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ allowCidrs: ['10.0.0.0/8'], ports: [443, 80] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts network denyCidrs rule', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ denyCidrs: ['169.254.169.254/32', '100.100.100.200/32'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects network denyCidrs with extra fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      network: [{ denyCidrs: ['10.0.0.0/8'], extra: true }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // Extended file ops (FileOpSchema is now z.string())
+  it('accepts extended file ops (open, stat, list, readlink, mkdir, chmod, rename)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      file: [{ allow: '/workspace/**', ops: ['read', 'write', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
   // Command rules
   it('accepts command allow rule', () => {
     const result = PolicyDefinitionSchema.safeParse({
@@ -157,13 +193,6 @@ describe('PolicyDefinitionSchema', () => {
   });
 
   // Rejections
-  it('rejects invalid file op', () => {
-    const result = PolicyDefinitionSchema.safeParse({
-      file: [{ allow: '/workspace/**', ops: ['execute'] }],
-    });
-    expect(result.success).toBe(false);
-  });
-
   it('rejects file rule with no decision key', () => {
     const result = PolicyDefinitionSchema.safeParse({
       file: [{ paths: '/workspace/**' }],

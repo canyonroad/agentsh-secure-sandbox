@@ -1,7 +1,7 @@
-export { vercel } from './vercel.js';
-export { e2b } from './e2b.js';
-export { daytona } from './daytona.js';
-export { cloudflare } from './cloudflare.js';
-export { blaxel } from './blaxel.js';
+export { vercel, vercelDefaults } from './vercel.js';
+export { e2b, e2bDefaults } from './e2b.js';
+export { daytona, daytonaDefaults } from './daytona.js';
+export { cloudflare, cloudflareDefaults } from './cloudflare.js';
+export { blaxel, blaxelDefaults } from './blaxel.js';
 export { sprites, spritesDefaults } from './sprites.js';
 export { modal, modalDefaults } from './modal.js';

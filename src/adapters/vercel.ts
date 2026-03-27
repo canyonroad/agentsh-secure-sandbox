@@ -1,4 +1,6 @@
-import type { SandboxAdapter } from '../core/types.js';
+import type { SandboxAdapter, SecureConfig } from '../core/types.js';
+import { agentDefault } from '../policies/presets.js';
+import { mergePrepend } from '../policies/merge.js';
 
 export function vercel(sandbox: any): SandboxAdapter {
   return {
@@ -45,4 +47,32 @@ export function vercel(sandbox: any): SandboxAdapter {
       return result.exitCode === 0;
     },
   };
+}
+
+/**
+ * Returns Vercel-optimized defaults for SecureConfig.
+ *
+ * Extends agentDefault() with Vercel-specific paths:
+ * - /vercel/sandbox/** workspace
+ * - /home/vercel-sandbox/** home directory
+ * - Broad /etc read (Vercel images have safe /etc)
+ * - /opt/** for Vercel-installed runtimes
+ */
+export function vercelDefaults(): Partial<SecureConfig> {
+  const policy = mergePrepend(agentDefault(), {
+    file: [
+      // Vercel sandbox workspace
+      { allow: ['/vercel/sandbox', '/vercel/sandbox/**'], ops: ['read', 'write', 'create', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: ['/vercel/sandbox', '/vercel/sandbox/**'] },
+      // Vercel home directory
+      { allow: ['/home/vercel-sandbox', '/home/vercel-sandbox/**'], ops: ['read', 'write', 'create', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: '/home/vercel-sandbox/**' },
+      // Broad /etc read (Vercel Firecracker VMs have safe /etc)
+      { allow: ['/etc', '/etc/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // Vercel-installed runtimes in /opt
+      { allow: '/opt/**', ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+    ],
+  });
+
+  return { policy };
 }

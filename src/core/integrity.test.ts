@@ -19,30 +19,30 @@ describe('CHECKSUMS', () => {
     expect(CHECKSUMS[PINNED_VERSION]['linux_arm64']).toBeDefined();
   });
 
-  it('has checksums for v0.15.0 linux_amd64', () => {
-    expect(CHECKSUMS['0.15.0']['linux_amd64']).toBe(
-      '89f7ebbfd75ffd961245ec62b2602fd0cc387740502ac858dbc39c367c5699c5',
+  it('has checksums for v0.16.2 linux_amd64', () => {
+    expect(CHECKSUMS['0.16.2']['linux_amd64']).toBe(
+      '7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995',
     );
   });
 
-  it('has checksums for v0.15.0 linux_arm64', () => {
-    expect(CHECKSUMS['0.15.0']['linux_arm64']).toBe(
-      '3fabbd749f9e98fb9f96ddfc94c389a6868cda7ed3668daa8440c39ceec85f3b',
+  it('has checksums for v0.16.2 linux_arm64', () => {
+    expect(CHECKSUMS['0.16.2']['linux_arm64']).toBe(
+      'a48b3e4a60804cca98326619a68409e8ee83556d69ee2cf5d574e4361e0c19c6',
     );
   });
 });
 
 describe('getChecksum', () => {
   it('returns pinned checksum for known version+arch', () => {
-    const checksum = getChecksum('0.15.0', 'linux_amd64');
+    const checksum = getChecksum('0.16.2', 'linux_amd64');
     expect(checksum).toBe(
-      '89f7ebbfd75ffd961245ec62b2602fd0cc387740502ac858dbc39c367c5699c5',
+      '7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995',
     );
   });
 
   it('returns override checksum when provided', () => {
     const override = 'deadbeef1234567890abcdef';
-    const checksum = getChecksum('0.15.0', 'linux_amd64', override);
+    const checksum = getChecksum('0.16.2', 'linux_amd64', override);
     expect(checksum).toBe(override);
   });
 
@@ -82,15 +82,15 @@ describe('buildVerifyCommand', () => {
 
 describe('binaryUrl', () => {
   it('returns default GitHub URL', () => {
-    const url = binaryUrl('0.16.2', 'linux_amd64');
+    const url = binaryUrl('0.16.9', 'linux_amd64');
     expect(url).toBe(
-      'https://github.com/canyonroad/agentsh/releases/download/v0.16.2/agentsh_0.16.2_linux_amd64.tar.gz',
+      'https://github.com/canyonroad/agentsh/releases/download/v0.16.9/agentsh_0.16.9_linux_amd64.tar.gz',
     );
   });
 
   it('returns override URL when provided', () => {
     const override = 'https://my-mirror.example.com/agentsh.tar.gz';
-    const url = binaryUrl('0.16.2', 'linux_amd64', override);
+    const url = binaryUrl('0.16.9', 'linux_amd64', override);
     expect(url).toBe(override);
   });
 });
