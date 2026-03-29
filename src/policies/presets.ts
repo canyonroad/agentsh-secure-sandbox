@@ -5,9 +5,8 @@ import { merge } from './merge.js';
 
 /**
  * Comprehensive policy for AI coding agents. This is the DEFAULT policy
- * used when no policy is specified. Aligned with production policies from
- * agentsh-vercel, e2b-agentsh, agentsh-cloudflare, agentsh-blaxel, and
- * daytona-test repos. Designed to work with all enforcement modes
+ * used when no policy is specified. Aligned with production agent-default.yaml
+ * from agentsh v0.16.9. Designed to work with all enforcement modes
  * including file_monitor (seccomp/ptrace).
  */
 export function agentDefault(
@@ -28,8 +27,14 @@ export function agentDefault(
       // --- Temp directories (full access) ---
       { allow: ['/tmp/**', '/var/tmp/**'] },
 
-      // --- System read (libraries, binaries) ---
-      { allow: ['/usr/**', '/lib/**', '/lib64/**', '/bin/**', '/sbin/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      // --- System read (libraries, binaries, runtimes, devices) ---
+      { allow: ['/usr/**', '/lib/**', '/lib64/**', '/bin/**', '/sbin/**', '/opt/**', '/dev/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+
+      // --- Device file writes (safe nodes) ---
+      { allow: [
+        '/dev/null', '/dev/zero', '/dev/tty', '/dev/pts/**',
+        '/dev/urandom', '/dev/random', '/dev/shm/**',
+      ], ops: ['write', 'create', 'open'] },
 
       // --- Sensitive /etc files (deny before /etc read) ---
       { deny: ['/etc/shadow', '/etc/gshadow', '/etc/sudoers', '/etc/sudoers.d/**'] },
@@ -39,26 +44,24 @@ export function agentDefault(
         '/etc/hosts', '/etc/resolv.conf',
         '/etc/ssl/**', '/etc/ca-certificates/**',
         '/etc/localtime', '/etc/timezone',
-        '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ld.so.conf.d/**',
+        '/etc/ld.so.cache', '/etc/ld.so.preload', '/etc/ld.so.conf', '/etc/ld.so.conf.d/**',
         '/etc/nsswitch.conf', '/etc/passwd', '/etc/group',
         '/etc/mime.types', '/etc/protocols', '/etc/services',
+        '/etc/gai.conf',
       ], ops: ['read', 'open', 'stat', 'readlink'] },
-
-      // --- Device files ---
-      { allow: [
-        '/dev/null', '/dev/zero', '/dev/urandom', '/dev/random',
-        '/dev/stdin', '/dev/stdout', '/dev/stderr',
-        '/dev/fd/**', '/dev/pts/**', '/dev/tty',
-      ], ops: ['read', 'write', 'open', 'stat'] },
 
       // --- /proc/self for process introspection ---
       { allow: ['/proc/self/**', '/proc/thread-self/**'], ops: ['read', 'open', 'stat', 'list', 'readlink'] },
 
-      // --- Package caches (read-only) ---
+      // --- Package caches (full access for dev workflows) ---
       { allow: [
-        '~/.npm/**', '~/.cache/**', '~/.cargo/**',
-        '/root/.npm/**', '/root/.cache/**', '/root/.cargo/**',
-      ], ops: ['read', 'open', 'stat', 'list'] },
+        '~/.npm/**', '~/.yarn/**', '~/.pnpm-store/**',
+        '~/.cache/**', '~/.cargo/**', '~/go/**',
+        '~/.local/**', '~/.rustup/**', '~/.bun/**',
+        '/root/.npm/**', '/root/.yarn/**', '/root/.pnpm-store/**',
+        '/root/.cache/**', '/root/.cargo/**', '/root/go/**',
+        '/root/.local/**', '/root/.rustup/**', '/root/.bun/**',
+      ] },
 
       // --- agentsh runtime ---
       { allow: ['/var/lib/agentsh/**', '/var/log/agentsh/**'], ops: ['read', 'write', 'open', 'stat', 'list', 'readlink'] },
@@ -83,32 +86,71 @@ export function agentDefault(
       // --- Agent config files (deny writes) ---
       { deny: ['**/.cursorrules', '**/CLAUDE.md', '**/copilot-instructions.md'], ops: ['write', 'create', 'delete'] },
 
-      // --- Block /proc and /sys (except /proc/self already allowed above) ---
-      { deny: ['/proc/**', '/sys/**'] },
+      // --- Sensitive /proc entries ---
+      { deny: ['/proc/self/environ', '/proc/thread-self/environ', '/proc/*/environ', '/proc/*/mem', '/proc/kcore'] },
+      // --- Block /proc and /sys writes ---
+      { deny: ['/proc/**', '/sys/**'], ops: ['write', 'create', 'chmod', 'delete', 'rename', 'mkdir'] },
 
       // --- Default deny (catch-all) ---
       { deny: '**' },
     ],
     network: [
-      // Localhost
-      { allowCidrs: ['127.0.0.1/32', '::1/128'] },
-      // Package registries + code hosting
+      // LLM providers
       {
         allow: [
-          'registry.npmjs.org',
-          'registry.yarnpkg.com',
-          'pypi.org',
-          'files.pythonhosted.org',
-          'crates.io',
-          'static.crates.io',
-          'index.crates.io',
-          'proxy.golang.org',
-          'sum.golang.org',
-          'github.com',
-          'raw.githubusercontent.com',
+          'api.anthropic.com', '*.anthropic.com',
+          'api.openai.com', '*.openai.com',
+          'generativelanguage.googleapis.com', '*.googleapis.com',
         ],
         ports: [443],
       },
+      // npm registry
+      {
+        allow: ['registry.npmjs.org', '*.npmjs.org', '*.npmjs.com', 'registry.yarnpkg.com'],
+        ports: [443, 80],
+      },
+      // PyPI
+      {
+        allow: ['pypi.org', '*.pypi.org', 'files.pythonhosted.org'],
+        ports: [443, 80],
+      },
+      // Cargo registry
+      {
+        allow: ['crates.io', '*.crates.io', 'static.crates.io', 'index.crates.io'],
+        ports: [443, 80],
+      },
+      // Go module proxy
+      {
+        allow: ['proxy.golang.org', 'sum.golang.org', '*.golang.org'],
+        ports: [443, 80],
+      },
+      // Other registries (Maven, RubyGems, Docker, Homebrew)
+      {
+        allow: [
+          'repo1.maven.org', 'central.maven.org', '*.maven.org',
+          'rubygems.org', '*.rubygems.org',
+          'registry-1.docker.io', '*.docker.io', '*.docker.com',
+          'ghcr.io', '*.ghcr.io',
+          'formulae.brew.sh',
+        ],
+        ports: [443, 80],
+      },
+      // GitHub (HTTPS + SSH)
+      {
+        allow: ['github.com', '*.github.com', '*.githubusercontent.com', 'api.github.com'],
+        ports: [443, 80, 22],
+      },
+      // GitLab
+      { allow: ['gitlab.com', '*.gitlab.com'], ports: [443, 80, 22] },
+      // Bitbucket
+      { allow: ['bitbucket.org', '*.bitbucket.org'], ports: [443, 80, 22] },
+      // CDNs
+      {
+        allow: ['*.cloudflare.com', '*.cloudfront.net', 'cdn.jsdelivr.net', 'unpkg.com', 'esm.sh'],
+        ports: [443, 80],
+      },
+      // Localhost
+      { allowCidrs: ['127.0.0.1/32', '::1/128'] },
       // Block cloud metadata services
       { denyCidrs: ['169.254.169.254/32', '100.100.100.200/32'] },
       // Block private networks
@@ -117,33 +159,93 @@ export function agentDefault(
       { deny: '*' },
     ],
     commands: [
-      // Allow safe commands
+      // File operations
       {
         allow: [
-          'bash', 'sh', '/bin/bash', '/bin/sh',
-          'echo', 'cat', 'head', 'tail', 'grep', 'find',
-          'ls', 'wc', 'sort', 'uniq', 'diff', 'pwd', 'date', 'which',
-          'whoami', 'id', 'uname', 'printf', 'test', 'true', 'false',
-          'mkdir', 'cp', 'mv', 'rm', 'touch', 'chmod', 'tr', 'cut',
-          'sed', 'awk', 'tee', 'xargs', 'basename', 'dirname', 'realpath',
-          'base64', 'md5sum', 'sha256sum', 'tar', 'gzip', 'gunzip',
-          'env', 'printenv', 'curl', 'wget',
+          'ls', 'cat', 'head', 'tail', 'less', 'more', 'file', 'stat',
+          'wc', 'du', 'df', 'touch', 'mkdir', 'cp', 'mv', 'ln',
+          'chmod', 'rm', 'rmdir', 'basename', 'dirname', 'realpath', 'readlink',
         ],
       },
-      // Allow dev tools
+      // Search tools
       {
         allow: [
-          'git', 'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun',
-          'python', 'python3', 'pip', 'pip3',
-          'cargo', 'rustc', 'go', 'make', 'cmake',
+          'grep', 'rg', 'find', 'fd', 'ag', 'ack',
+          'which', 'whereis', 'type', 'locate',
         ],
       },
-      // Deny network tools
-      { deny: ['nc', 'ncat', 'netcat', 'socat', 'telnet', 'ssh', 'scp', 'rsync'] },
-      // Deny system commands
-      { deny: ['shutdown', 'reboot', 'halt', 'poweroff', 'systemctl', 'service', 'mount', 'umount', 'dd', 'fdisk', 'mkfs', 'kill', 'killall', 'pkill'] },
-      // Deny shell escapes
+      // Text processing
+      {
+        allow: [
+          'sed', 'awk', 'tr', 'sort', 'uniq', 'cut', 'paste',
+          'tee', 'xargs', 'jq', 'yq', 'column', 'fmt', 'fold',
+          'expand', 'unexpand',
+        ],
+      },
+      // Shell interpreters and builtins
+      {
+        allow: [
+          'bash', 'sh', 'zsh', '/bin/bash', '/bin/sh',
+          'env', 'printenv', 'true', 'false', 'test', '[',
+          'expr', 'seq', 'sh.real', 'bash.real',
+        ],
+      },
+      // System information
+      {
+        allow: [
+          'whoami', 'id', 'uname', 'hostname', 'pwd', 'date',
+          'echo', 'printf', 'yes', 'sleep', 'time', 'timeout',
+        ],
+      },
+      // Dev tools and runtimes
+      {
+        allow: [
+          'git', 'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun', 'deno',
+          'python', 'python3', 'pip', 'pip3', 'uv',
+          'go', 'cargo', 'rustc', 'rustup',
+          'make', 'cmake', 'gcc', 'g++', 'clang', 'clang++', 'ld', 'ar',
+          'javac', 'java', 'mvn', 'gradle',
+          'ruby', 'gem', 'bundler',
+          'php', 'composer',
+        ],
+      },
+      // Build, test, and lint
+      {
+        allow: [
+          'pytest', 'jest', 'mocha', 'vitest',
+          'tsc', 'eslint', 'prettier',
+          'rubocop', 'rspec', 'phpunit',
+        ],
+      },
+      // HTTP tools (network rules are the real guard)
+      { allow: ['curl', 'wget'] },
+      // Containers
+      { allow: ['docker', 'docker-compose', 'podman'] },
+      // Archive and compression
+      { allow: ['tar', 'gzip', 'gunzip', 'zip', 'unzip', 'bzip2', 'xz'] },
+      // Miscellaneous utilities
+      {
+        allow: [
+          'nohup', 'patch', 'diff', 'bc', 'openssl', 'ssh-keygen',
+          'base64', 'md5sum', 'sha256sum',
+          'ps', 'top', 'htop', 'pgrep',
+        ],
+      },
+      // AI coding tools
+      {
+        allow: [
+          'claude', 'codex', 'aider', 'copilot', 'gh',
+          'agentsh', 'agentsh-unixwrap', 'agentsh-stub',
+        ],
+      },
+      // Deny raw network tools
+      { deny: ['nc', 'ncat', 'netcat', 'socat', 'telnet'] },
+      // Deny system administration
+      { deny: ['shutdown', 'reboot', 'halt', 'poweroff', 'systemctl', 'service', 'mount', 'umount', 'dd', 'fdisk', 'mkfs'] },
+      // Deny privilege escalation
       { deny: ['sudo', 'su', 'doas', 'chroot', 'nsenter', 'unshare'] },
+      // Deny system package managers (use language-specific managers)
+      { deny: ['apt', 'apt-get', 'yum', 'dnf', 'brew'] },
       // Allow-all catch-all (file + network rules are the real enforcement)
       { allow: '*' },
     ],
@@ -191,6 +293,52 @@ export function agentDefault(
         reason: 'Package published recently — requires approval',
       },
     ],
+    envPolicy: {
+      deny: [
+        '*_SECRET*',
+        '*_PASSWORD*',
+        '*_PRIVATE_KEY*',
+        '*_API_KEY*',
+        '*_ACCESS_KEY*',
+        '*_TOKEN',
+        'ANTHROPIC_API_KEY',
+        'OPENAI_API_KEY',
+        'GITHUB_TOKEN',
+        'GH_TOKEN',
+        'NPM_TOKEN',
+        'AWS_SECRET_ACCESS_KEY',
+        'AWS_SESSION_TOKEN',
+        'GOOGLE_APPLICATION_CREDENTIALS',
+      ],
+      blockIteration: true,
+    },
+    signalRules: [
+      { name: 'allow-self', signals: ['@all'], target: { type: 'self' }, decision: 'allow' },
+      { name: 'allow-children', signals: ['@all'], target: { type: 'children' }, decision: 'allow' },
+      { name: 'allow-session', signals: ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGUSR1', 'SIGUSR2'], target: { type: 'session' }, decision: 'allow' },
+      { name: 'audit-parent', signals: ['@all'], target: { type: 'parent' }, decision: 'audit' },
+      { name: 'deny-external-fatal', signals: ['@fatal'], target: { type: 'external' }, decision: 'deny', fallback: 'audit', message: 'Blocking signal to process outside session' },
+      { name: 'deny-system', signals: ['@all'], target: { type: 'system' }, decision: 'deny', fallback: 'audit', message: 'Blocking signal to system process' },
+    ],
+    unixSocketRules: [
+      { name: 'allow-docker-socket', paths: ['/var/run/docker.sock'], operations: ['connect'], decision: 'allow' },
+      { name: 'deny-system-sockets', paths: ['/var/run/**'], operations: ['connect', 'bind', 'listen', 'sendto'], decision: 'deny' },
+    ],
+    resourceLimits: {
+      maxMemoryMb: 8192,
+      cpuQuotaPercent: 100,
+      pidsMax: 500,
+      commandTimeout: '15m',
+      sessionTimeout: '12h',
+      idleTimeout: '30m',
+    },
+    auditSettings: {
+      logAllowed: false,
+      logDenied: true,
+      logApproved: true,
+      includeStdout: false,
+      includeStderr: true,
+    },
   };
   return extensions ? merge(base, extensions) : base;
 }
