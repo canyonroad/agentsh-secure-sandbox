@@ -75,6 +75,7 @@
     "test:e2e:sprites": "npx tsx src/e2e/sprites-e2e-runner.ts",
     "test:e2e:modal": "npx tsx src/e2e/modal-e2e-runner.ts",
     "test:e2e:runloop": "npx tsx src/e2e/runloop-e2e-runner.ts",
+    "test:e2e:exe": "npx tsx src/e2e/exe-e2e-runner.ts",
     "build:images": "npx tsx scripts/build-sandbox-images.ts",
     "build:images:e2b": "npx tsx scripts/build-sandbox-images.ts --provider e2b",
     "build:images:cloudflare": "npx tsx scripts/build-sandbox-images.ts --provider cloudflare",
