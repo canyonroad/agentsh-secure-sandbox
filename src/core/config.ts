@@ -10,12 +10,12 @@ export interface ServerConfigOpts {
   serverTimeouts?: { readTimeout?: string; writeTimeout?: string; maxRequestSize?: string };
   logging?: { level?: string; format?: string; output?: string };
   sessions?: { baseDir?: string; maxSessions?: number; defaultTimeout?: string; idleTimeout?: string; cleanupInterval?: string };
-  audit?: { enabled?: boolean; sqlitePath?: string };
+  audit?: { enabled?: boolean; sqlitePath?: string; batchSize?: number; flushInterval?: string; channelSize?: number };
   sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
   allowDegraded?: boolean;
   fuse?: { deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
-  seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean } };
+  seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean } };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
   ptrace?: {
@@ -32,6 +32,9 @@ export interface ServerConfigOpts {
       seccompPrefilter?: boolean;
       maxTracees?: number;
       maxHoldMs?: number;
+      staticAllowFile?: boolean;
+      staticAllowNetwork?: boolean;
+      argLevelFilter?: boolean;
     };
     onAttachFailure?: 'fail_open' | 'fail_closed';
   };
@@ -39,6 +42,7 @@ export interface ServerConfigOpts {
   proxy?: { mode?: string; port?: number; providers?: Record<string, string> };
   dlp?: { mode?: string; patterns?: Record<string, boolean>; customPatterns?: Array<{ name: string; display: string; regex: string }> };
   policiesOverride?: { dir?: string; defaultPolicy?: string };
+  policySigning?: { trustStore?: string; mode?: 'enforce' | 'warn' | 'off' };
   approvals?: { enabled?: boolean; mode?: string; timeout?: string };
   metrics?: { enabled?: boolean; path?: string };
   health?: { path?: string; readinessPath?: string };
@@ -136,6 +140,13 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       // canceled" on every exec. Policy is still enforced via landlock and
       // network rules. When ptrace is enabled, seccomp is also incompatible.
       seccomp: { enabled: false },
+      // Unix sockets wrapper disabled alongside seccomp: the wrapper
+      // (agentsh-unixwrap) installs seccomp-bpf filters that fail in the same
+      // container environments that block seccomp(). In v0.16.9+, leaving this
+      // defaulted to true triggers file_monitor enforcement which intercepts
+      // ALL file operations — breaking commands unless the policy explicitly
+      // allows every system file path.
+      unix_sockets: { enabled: false },
     },
   };
   if (opts.watchtower) config.watchtower = opts.watchtower;
@@ -179,7 +190,13 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   if (opts.audit) {
     const auditObj: Record<string, unknown> = {};
     if (opts.audit.enabled !== undefined) auditObj.enabled = opts.audit.enabled;
-    if (opts.audit.sqlitePath) auditObj.sqlite_path = opts.audit.sqlitePath;
+    if (opts.audit.sqlitePath) {
+      const storageObj: Record<string, unknown> = { sqlite_path: opts.audit.sqlitePath };
+      if (opts.audit.batchSize !== undefined) storageObj.batch_size = opts.audit.batchSize;
+      if (opts.audit.flushInterval) storageObj.flush_interval = opts.audit.flushInterval;
+      if (opts.audit.channelSize !== undefined) storageObj.channel_size = opts.audit.channelSize;
+      auditObj.storage = storageObj;
+    }
     config.audit = auditObj;
   }
 
@@ -217,6 +234,9 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       sec.file_monitor = {
         ...(opts.seccompDetails.fileMonitor.enabled !== undefined && { enabled: opts.seccompDetails.fileMonitor.enabled }),
         ...(opts.seccompDetails.fileMonitor.enforceWithoutFuse !== undefined && { enforce_without_fuse: opts.seccompDetails.fileMonitor.enforceWithoutFuse }),
+        ...(opts.seccompDetails.fileMonitor.interceptMetadata !== undefined && { intercept_metadata: opts.seccompDetails.fileMonitor.interceptMetadata }),
+        ...(opts.seccompDetails.fileMonitor.openatEmulation !== undefined && { openat_emulation: opts.seccompDetails.fileMonitor.openatEmulation }),
+        ...(opts.seccompDetails.fileMonitor.blockIoUring !== undefined && { block_io_uring: opts.seccompDetails.fileMonitor.blockIoUring }),
       };
     }
   }
@@ -250,6 +270,9 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       if (opts.ptrace.performance.seccompPrefilter !== undefined) perfObj.seccomp_prefilter = opts.ptrace.performance.seccompPrefilter;
       if (opts.ptrace.performance.maxTracees !== undefined) perfObj.max_tracees = opts.ptrace.performance.maxTracees;
       if (opts.ptrace.performance.maxHoldMs !== undefined) perfObj.max_hold_ms = opts.ptrace.performance.maxHoldMs;
+      if (opts.ptrace.performance.staticAllowFile !== undefined) perfObj.static_allow_file = opts.ptrace.performance.staticAllowFile;
+      if (opts.ptrace.performance.staticAllowNetwork !== undefined) perfObj.static_allow_network = opts.ptrace.performance.staticAllowNetwork;
+      if (opts.ptrace.performance.argLevelFilter !== undefined) perfObj.arg_level_filter = opts.ptrace.performance.argLevelFilter;
       ptraceObj.performance = perfObj;
     }
     if (opts.ptrace.onAttachFailure) ptraceObj.on_attach_failure = opts.ptrace.onAttachFailure;
@@ -287,6 +310,16 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       ...(opts.policiesOverride.dir && { dir: opts.policiesOverride.dir }),
       ...(opts.policiesOverride.defaultPolicy && { default: opts.policiesOverride.defaultPolicy }),
     };
+  }
+
+  // Policy signing (v0.16.9+)
+  if (opts.policySigning) {
+    const policies = (config.policies as Record<string, unknown>) ?? {};
+    const signingObj: Record<string, unknown> = {};
+    if (opts.policySigning.trustStore) signingObj.trust_store = opts.policySigning.trustStore;
+    if (opts.policySigning.mode) signingObj.mode = opts.policySigning.mode;
+    policies.signing = signingObj;
+    config.policies = policies;
   }
 
   // Approvals

@@ -7,7 +7,7 @@ const stringOrArray = z.union([z.string(), z.array(z.string())]);
 
 // ─── File rules ─────────────────────────────────────────────
 
-export const FileOpSchema = z.enum(['read', 'write', 'create', 'delete']);
+export const FileOpSchema = z.string();
 
 const FileAllowRule = z
   .object({ allow: stringOrArray, ops: z.array(FileOpSchema).optional() })
@@ -54,10 +54,25 @@ const NetworkRedirectRule = z
   .object({ redirect: z.string(), to: z.string() })
   .strict();
 
+const NetworkAllowCidrsRule = z
+  .object({
+    allowCidrs: z.array(z.string()),
+    ports: z.array(z.number().int().min(1).max(65535)).optional(),
+  })
+  .strict();
+
+const NetworkDenyCidrsRule = z
+  .object({
+    denyCidrs: z.array(z.string()),
+  })
+  .strict();
+
 export const NetworkRuleSchema = z.union([
   NetworkAllowRule,
   NetworkDenyRule,
   NetworkRedirectRule,
+  NetworkAllowCidrsRule,
+  NetworkDenyCidrsRule,
 ]);
 
 // ─── Command rules ──────────────────────────────────────────

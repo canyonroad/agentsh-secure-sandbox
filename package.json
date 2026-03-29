@@ -1,6 +1,6 @@
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -81,7 +81,7 @@
     "@blaxel/core": "^0.2.71",
     "@cloudflare/sandbox": "^0.7.13",
     "@daytonaio/sdk": "^0.149.0",
-    "@fly/sprites": "^0.0.1-rc37",
+    "@fly/sprites": "^0.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
     "@vercel/sandbox": "^1.8.0",
@@ -97,7 +97,7 @@
     "@cloudflare/sandbox": "^0.1.0",
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
-    "@fly/sprites": "^1.0.0",
+    "@fly/sprites": "^0.0.1",
     "@vercel/sandbox": "^1.0.0"
   },
   "peerDependenciesMeta": {

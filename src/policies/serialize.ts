@@ -81,6 +81,26 @@ function serializeNetworkRules(
 ): Record<string, unknown>[] {
   return rules.map((rule, i) => {
     const r = rule as Record<string, unknown>;
+
+    // CIDR-based rules
+    if ('allowCidrs' in r) {
+      const out: Record<string, unknown> = {
+        name: `network-rule-${i}`,
+        cidrs: r.allowCidrs,
+        decision: 'allow',
+      };
+      if ('ports' in r && r.ports) out.ports = r.ports;
+      return out;
+    }
+    if ('denyCidrs' in r) {
+      return {
+        name: `network-rule-${i}`,
+        cidrs: r.denyCidrs,
+        decision: 'deny',
+      };
+    }
+
+    // Domain-based rules
     const { key, value } = findDecision(r, SIMPLE_DECISION_KEYS);
     const domains = toArray(value as string | string[]);
 

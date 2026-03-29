@@ -1,5 +1,7 @@
-import type { SandboxAdapter } from '../core/types.js';
+import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { agentDefault } from '../policies/presets.js';
+import { mergePrepend } from '../policies/merge.js';
 
 export function e2b(sandbox: any): SandboxAdapter {
   return {
@@ -41,4 +43,31 @@ export function e2b(sandbox: any): SandboxAdapter {
       await sandbox.kill();
     },
   };
+}
+
+/**
+ * Returns E2B-optimized defaults for SecureConfig.
+ *
+ * Extends agentDefault() with E2B-specific rules:
+ * - Deny E2B infrastructure binaries (envd, socat) and systemd paths
+ * - Deny E2B internal network (192.0.2.0/24 TEST-NET-1)
+ * - Deny E2B infrastructure commands (iptables, ip, tc, nft)
+ */
+export function e2bDefaults(): Partial<SecureConfig> {
+  const policy = mergePrepend(agentDefault(), {
+    file: [
+      // Block E2B infrastructure binaries and configs
+      { deny: ['/usr/bin/envd', '/usr/bin/socat', '/etc/systemd/**', '/run/systemd/**'] },
+    ],
+    network: [
+      // Block E2B internal services (TEST-NET-1 range)
+      { denyCidrs: ['192.0.2.0/24'] },
+    ],
+    commands: [
+      // Block commands that could interfere with E2B infrastructure
+      { deny: ['socat', 'envd', 'iptables', 'ip6tables', 'nft', 'tc', 'ip'] },
+    ],
+  });
+
+  return { policy };
 }

@@ -255,7 +255,7 @@ describe('generateServerConfig — extended fields', () => {
   it('generates audit section', () => {
     const result = generateServerConfig({ audit: { enabled: true, sqlitePath: '/var/audit.db' } });
     const parsed = yaml.load(result) as any;
-    expect(parsed.audit).toEqual({ enabled: true, sqlite_path: '/var/audit.db' });
+    expect(parsed.audit).toEqual({ enabled: true, storage: { sqlite_path: '/var/audit.db' } });
   });
 
   it('generates sandbox.limits', () => {
@@ -366,7 +366,7 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.development).toBeUndefined();
     expect(parsed.sandbox.limits).toBeUndefined();
     expect(parsed.sandbox.cgroups).toBeUndefined();
-    expect(parsed.sandbox.unix_sockets).toBeUndefined();
+    expect(parsed.sandbox.unix_sockets).toEqual({ enabled: false });
     expect(parsed.sandbox.ptrace).toBeUndefined();
     expect(parsed.sandbox.env_inject).toBeUndefined();
   });

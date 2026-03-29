@@ -1,5 +1,7 @@
-import type { SandboxAdapter } from '../core/types.js';
+import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { agentDefault } from '../policies/presets.js';
+import { mergePrepend } from '../policies/merge.js';
 
 export function cloudflare(sandbox: any): SandboxAdapter {
   return {
@@ -43,4 +45,32 @@ export function cloudflare(sandbox: any): SandboxAdapter {
       // No-op — Cloudflare manages container lifecycle
     },
   };
+}
+
+/**
+ * Returns Cloudflare-optimized defaults for SecureConfig.
+ *
+ * Extends agentDefault() with Cloudflare-specific paths:
+ * - /home/sandbox/** home directory
+ * - Broader /etc read (profile, alternatives, python, pip, gitconfig)
+ * - /dev/shm/** for shared memory
+ */
+export function cloudflareDefaults(): Partial<SecureConfig> {
+  const policy = mergePrepend(agentDefault(), {
+    file: [
+      // Cloudflare sandbox home directory
+      { allow: '/home/sandbox/**', ops: ['read', 'write', 'create', 'open', 'stat', 'list', 'readlink', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: '/home/sandbox/**' },
+      // Broader /etc read for Cloudflare containers
+      { allow: [
+        '/etc/gai.conf', '/etc/bash.bashrc', '/etc/profile', '/etc/profile.d/**',
+        '/etc/environment', '/etc/alternatives/**', '/etc/pip.conf',
+        '/etc/python3/**', '/etc/gitconfig',
+      ], ops: ['read', 'open', 'stat', 'readlink'] },
+      // Shared memory
+      { allow: '/dev/shm/**', ops: ['read', 'write', 'open', 'stat'] },
+    ],
+  });
+
+  return { policy };
 }

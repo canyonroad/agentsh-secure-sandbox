@@ -2,7 +2,6 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 import { agentDefault } from '../policies/presets.js';
-import { mergePrepend } from '../policies/merge.js';
 
 /**
  * Wraps a Modal Sandbox object into a SandboxAdapter.
@@ -140,31 +139,10 @@ export function modalDefaults(): Partial<SecureConfig> {
     health: { path: '/health', readinessPath: '/ready' },
   };
 
-  // Extend agentDefault with system paths needed for ptrace mode.
-  // In FUSE/seccomp mode, only workspace files are intercepted so system
-  // libs are inherently accessible. With ptrace, ALL file opens are
-  // intercepted, so system libraries, binaries, and linker config must
-  // be explicitly allowed.
-  const policy = mergePrepend(agentDefault(), {
-    file: [
-      // System shared libraries (required for any dynamically linked binary)
-      { allow: ['/lib/**', '/lib64/**', '/usr/lib/**', '/usr/lib64/**'], ops: ['read'] },
-      // System binaries
-      { allow: ['/bin/**', '/sbin/**', '/usr/bin/**', '/usr/sbin/**', '/usr/local/bin/**'], ops: ['read'] },
-      // Linker config
-      { allow: ['/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ld.so.conf.d/**'], ops: ['read'] },
-      // Shared data (locales, terminfo, mime types)
-      { allow: '/usr/share/**', ops: ['read'] },
-      // Device files
-      { allow: ['/dev/null', '/dev/zero', '/dev/urandom', '/dev/random', '/dev/fd/**'], ops: ['read', 'write'] },
-      // /proc/self for process introspection
-      { allow: '/proc/self/**', ops: ['read'] },
-      // Temp directories
-      { allow: ['/tmp/**', '/var/tmp/**'], ops: ['read', 'write', 'create'] },
-      // System config needed by tools (SSL certs, resolv.conf, hosts)
-      { allow: ['/etc/ssl/**', '/etc/ca-certificates/**', '/etc/resolv.conf', '/etc/hosts', '/etc/hostname', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group'], ops: ['read'] },
-    ],
-  });
+  // agentDefault() now includes comprehensive system paths (usr, lib, dev,
+  // proc/self, etc.) needed for ptrace/file_monitor mode. No provider-specific
+  // file rules needed for Modal.
+  const policy = agentDefault();
 
   return {
     policy,

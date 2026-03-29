@@ -369,8 +369,6 @@ export async function provision(
   ], { sudo: true });
 
   // Step 11: Start server. Run with sudo so it can bind FUSE, seccomp, etc.
-  // v0.16.2 fixes the lstat issue for workspace-mnt so non-root exec can
-  // access session directories. The chmod -R 755 below ensures accessibility.
   const serverResult = await adapter.exec(
     'agentsh',
     ['server', '--config', '/etc/agentsh/config.yml'],
@@ -423,7 +421,7 @@ export async function provision(
   }
 
   // Step 13b: Make session dir readable by non-root users so agentsh exec
-  // (which runs unprivileged) can lstat the workspace-mnt symlink (v0.16.2+)
+  // (which runs unprivileged) can lstat the workspace-mnt symlink
   await adapter.exec('chmod', ['-R', '755', '/var/lib/agentsh/sessions/'], { sudo: true });
 
   // Step 13c: Set trace context if traceParent is provided or OTEL span is active

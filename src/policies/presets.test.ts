@@ -9,13 +9,13 @@ describe('presets', () => {
       expect(PolicyDefinitionSchema.safeParse(policy).success).toBe(true);
     });
 
-    it('denies env and printenv', () => {
+    it('allows env and printenv (env_policy handles secret filtering)', () => {
       const policy = agentDefault();
-      const denyCommands = policy.commands!
-        .filter((r): r is { deny: string | string[] } => 'deny' in r)
-        .flatMap(r => Array.isArray(r.deny) ? r.deny : [r.deny]);
-      expect(denyCommands).toContain('env');
-      expect(denyCommands).toContain('printenv');
+      const allowCommands = policy.commands!
+        .filter((r): r is { allow: string | string[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      expect(allowCommands).toContain('env');
+      expect(allowCommands).toContain('printenv');
     });
 
     it('denies network by default (last rule is deny *)', () => {
@@ -24,16 +24,108 @@ describe('presets', () => {
       expect('deny' in lastNetRule && lastNetRule.deny).toBe('*');
     });
 
-    it('allows workspace read/write/create', () => {
+    it('denies files by default (last file rule is deny **)', () => {
       const policy = agentDefault();
-      const firstFileRule = policy.file![0];
-      expect('allow' in firstFileRule && firstFileRule.allow).toBe('/workspace/**');
+      const lastFileRule = policy.file![policy.file!.length - 1];
+      expect('deny' in lastFileRule && lastFileRule.deny).toBe('**');
     });
 
-    it('redirects curl and wget', () => {
+    it('allows workspace read/write/create with extended ops', () => {
       const policy = agentDefault();
+      const workspaceAllow = policy.file!.find(
+        r => 'allow' in r && (r as any).allow === '/workspace/**',
+      ) as any;
+      expect(workspaceAllow).toBeDefined();
+      expect(workspaceAllow.ops).toContain('read');
+      expect(workspaceAllow.ops).toContain('write');
+      expect(workspaceAllow.ops).toContain('open');
+      expect(workspaceAllow.ops).toContain('stat');
+    });
+
+    it('soft-deletes workspace files', () => {
+      const policy = agentDefault();
+      const softDelete = policy.file!.find(
+        r => 'softDelete' in r && (r as any).softDelete === '/workspace/**',
+      );
+      expect(softDelete).toBeDefined();
+    });
+
+    it('allows system paths read-only', () => {
+      const policy = agentDefault();
+      const systemRead = policy.file!.find(
+        r => 'allow' in r && Array.isArray((r as any).allow) && (r as any).allow.includes('/usr/**'),
+      ) as any;
+      expect(systemRead).toBeDefined();
+      expect(systemRead.ops).toContain('read');
+      expect(systemRead.ops).not.toContain('write');
+    });
+
+    it('allows device files', () => {
+      const policy = agentDefault();
+      const devRule = policy.file!.find(
+        r => 'allow' in r && Array.isArray((r as any).allow) && (r as any).allow.includes('/dev/null'),
+      );
+      expect(devRule).toBeDefined();
+    });
+
+    it('allows /proc/self for introspection', () => {
+      const policy = agentDefault();
+      const procRule = policy.file!.find(
+        r => 'allow' in r && Array.isArray((r as any).allow) && (r as any).allow.includes('/proc/self/**'),
+      );
+      expect(procRule).toBeDefined();
+    });
+
+    it('denies dangerous binaries', () => {
+      const policy = agentDefault();
+      const firstRule = policy.file![0];
+      expect('deny' in firstRule).toBe(true);
+      const denyPaths = Array.isArray((firstRule as any).deny) ? (firstRule as any).deny : [(firstRule as any).deny];
+      expect(denyPaths).toContain('/usr/bin/sudo');
+      expect(denyPaths).toContain('/usr/bin/su');
+    });
+
+    it('allows curl and wget (no redirect)', () => {
+      const policy = agentDefault();
+      const allowCommands = policy.commands!
+        .filter((r): r is { allow: string | string[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      expect(allowCommands).toContain('curl');
+      expect(allowCommands).toContain('wget');
       const redirectRules = policy.commands!.filter(r => 'redirect' in r);
-      expect(redirectRules.length).toBeGreaterThan(0);
+      expect(redirectRules.length).toBe(0);
+    });
+
+    it('has allow-all command catch-all (security via file + network rules)', () => {
+      const policy = agentDefault();
+      const lastCmdRule = policy.commands![policy.commands!.length - 1];
+      expect('allow' in lastCmdRule && lastCmdRule.allow).toBe('*');
+    });
+
+    it('has CIDR rules for localhost', () => {
+      const policy = agentDefault();
+      const cidrRule = policy.network!.find(
+        r => 'allowCidrs' in r,
+      ) as any;
+      expect(cidrRule).toBeDefined();
+      expect(cidrRule.allowCidrs).toContain('127.0.0.1/32');
+      expect(cidrRule.allowCidrs).toContain('::1/128');
+    });
+
+    it('blocks metadata services via denyCidrs', () => {
+      const policy = agentDefault();
+      const metadataDeny = policy.network!.find(
+        r => 'denyCidrs' in r && (r as any).denyCidrs.includes('169.254.169.254/32'),
+      );
+      expect(metadataDeny).toBeDefined();
+    });
+
+    it('blocks private networks via denyCidrs', () => {
+      const policy = agentDefault();
+      const privateDeny = policy.network!.find(
+        r => 'denyCidrs' in r && (r as any).denyCidrs.includes('10.0.0.0/8'),
+      );
+      expect(privateDeny).toBeDefined();
     });
 
     it('denies cloud credential paths', () => {
@@ -87,8 +179,6 @@ describe('presets', () => {
         network: [{ allow: ['api.stripe.com'], ports: [443] }],
       });
       expect(PolicyDefinitionSchema.safeParse(policy).success).toBe(true);
-      // Extension appended — last network rule should be the extension (since base deny * is before)
-      // Actually extensions are appended AFTER base, so deny * stays, and extension is after
       const networkRules = policy.network!;
       expect(networkRules.length).toBeGreaterThan(2);
       const hasStripe = networkRules.some(r => 'allow' in r && (Array.isArray(r.allow) ? r.allow.includes('api.stripe.com') : r.allow === 'api.stripe.com'));

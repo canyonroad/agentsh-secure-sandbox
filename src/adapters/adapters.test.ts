@@ -6,6 +6,15 @@ import { cloudflare } from './cloudflare.js';
 import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
 import { modal } from './modal.js';
+import { vercelDefaults } from './vercel.js';
+import { e2bDefaults } from './e2b.js';
+import { daytonaDefaults } from './daytona.js';
+import { cloudflareDefaults } from './cloudflare.js';
+import { blaxelDefaults } from './blaxel.js';
+import { modalDefaults } from './modal.js';
+import { spritesDefaults } from './sprites.js';
+import { PolicyDefinitionSchema } from '../policies/schema.js';
+import { serializePolicy } from '../policies/serialize.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -702,5 +711,102 @@ describe('modal adapter', () => {
     const adapter = modal(mock);
     await adapter.stop!();
     expect(mock.terminate).toHaveBeenCalled();
+  });
+});
+
+// ─── Provider defaults ──────────────────────────────────────
+
+describe('provider defaults', () => {
+  const providers = [
+    { name: 'vercelDefaults', fn: vercelDefaults },
+    { name: 'e2bDefaults', fn: e2bDefaults },
+    { name: 'daytonaDefaults', fn: daytonaDefaults },
+    { name: 'cloudflareDefaults', fn: cloudflareDefaults },
+    { name: 'blaxelDefaults', fn: blaxelDefaults },
+    { name: 'modalDefaults', fn: modalDefaults },
+    { name: 'spritesDefaults', fn: spritesDefaults },
+  ];
+
+  for (const { name, fn } of providers) {
+    describe(name, () => {
+      it('returns an object with policy', () => {
+        const defaults = fn();
+        expect(defaults).toBeDefined();
+      });
+
+      it('policy validates against PolicyDefinitionSchema', () => {
+        const defaults = fn();
+        if (defaults.policy) {
+          const result = PolicyDefinitionSchema.safeParse(defaults.policy);
+          expect(result.success).toBe(true);
+        }
+      });
+
+      it('policy serializes to valid YAML', () => {
+        const defaults = fn();
+        if (defaults.policy) {
+          const yamlStr = serializePolicy(defaults.policy as any);
+          expect(yamlStr).toBeDefined();
+          expect(yamlStr.length).toBeGreaterThan(0);
+        }
+      });
+    });
+  }
+
+  it('vercelDefaults includes /vercel/sandbox paths', () => {
+    const { policy } = vercelDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/vercel/sandbox/**');
+  });
+
+  it('e2bDefaults denies E2B internals', () => {
+    const { policy } = e2bDefaults() as any;
+    const denyPaths = policy.file
+      .filter((r: any) => 'deny' in r)
+      .flatMap((r: any) => Array.isArray(r.deny) ? r.deny : [r.deny]);
+    expect(denyPaths).toContain('/usr/bin/envd');
+  });
+
+  it('e2bDefaults blocks E2B internal network', () => {
+    const { policy } = e2bDefaults() as any;
+    const denyCidrs = policy.network
+      .filter((r: any) => 'denyCidrs' in r)
+      .flatMap((r: any) => r.denyCidrs);
+    expect(denyCidrs).toContain('192.0.2.0/24');
+  });
+
+  it('cloudflareDefaults includes /home/sandbox paths', () => {
+    const { policy } = cloudflareDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/home/sandbox/**');
+  });
+
+  it('daytonaDefaults includes /home/daytona paths', () => {
+    const { policy } = daytonaDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/home/daytona/**');
+  });
+
+  it('daytonaDefaults allows GitLab and Bitbucket', () => {
+    const { policy } = daytonaDefaults() as any;
+    const allowDomains = policy.network
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allowDomains).toContain('gitlab.com');
+    expect(allowDomains).toContain('bitbucket.org');
+  });
+
+  it('blaxelDefaults includes /app workspace', () => {
+    const { policy } = blaxelDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/app/**');
   });
 });
