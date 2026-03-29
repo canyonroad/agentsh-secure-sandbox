@@ -6,6 +6,7 @@ import { cloudflare } from './cloudflare.js';
 import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
 import { modal } from './modal.js';
+import { runloop } from './runloop.js';
 import { vercelDefaults } from './vercel.js';
 import { e2bDefaults } from './e2b.js';
 import { daytonaDefaults } from './daytona.js';
@@ -13,6 +14,7 @@ import { cloudflareDefaults } from './cloudflare.js';
 import { blaxelDefaults } from './blaxel.js';
 import { modalDefaults } from './modal.js';
 import { spritesDefaults } from './sprites.js';
+import { runloopDefaults } from './runloop.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
 
@@ -716,6 +718,131 @@ describe('modal adapter', () => {
 
 // ─── Provider defaults ──────────────────────────────────────
 
+describe('runloop adapter', () => {
+  function mockDevbox() {
+    return {
+      client: {
+        devboxes: {
+          executeSync: vi.fn(async () => ({ stdout: 'out', stderr: '', exit_status: 0 })),
+          writeFileContents: vi.fn(async () => ({})),
+          readFileContents: vi.fn(async () => 'file content'),
+          shutdown: vi.fn(async () => {}),
+        },
+      },
+      id: 'devbox-123',
+    };
+  }
+
+  it('maps exec to client.devboxes.executeSync', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    const result = await adapter.exec('ls', ['-la']);
+    expect(mock.client.devboxes.executeSync).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ command: expect.stringContaining('ls') }),
+    );
+    expect(result.stdout).toBe('out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('prepends sudo when opts.sudo is true', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.client.devboxes.executeSync).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ command: expect.stringMatching(/^sudo /) }),
+    );
+  });
+
+  it('wraps cwd with cd command', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.exec('ls', [], { cwd: '/workspace' });
+    expect(mock.client.devboxes.executeSync).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ command: expect.stringContaining("cd '/workspace'") }),
+    );
+  });
+
+  it('detached returns immediately with exitCode 0', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    const result = await adapter.exec('server', ['start'], { detached: true });
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('includes env vars in command', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.client.devboxes.executeSync).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ command: expect.stringContaining('TRACEPARENT=00-abc-def-01') }),
+    );
+  });
+
+  it('includes env vars in detached commands', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.exec('server', ['start'], { detached: true, env: { FOO: 'bar' } });
+    // detached fires and forgets — just check it doesn't throw
+  });
+
+  it('writeFile calls writeFileContents', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.writeFile('/workspace/test.txt', 'hello');
+    expect(mock.client.devboxes.writeFileContents).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ file_path: '/workspace/test.txt', contents: 'hello' }),
+    );
+  });
+
+  it('readFile calls readFileContents', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    const content = await adapter.readFile('/workspace/test.txt');
+    expect(mock.client.devboxes.readFileContents).toHaveBeenCalledWith(
+      'devbox-123',
+      expect.objectContaining({ file_path: '/workspace/test.txt' }),
+    );
+    expect(content).toBe('file content');
+  });
+
+  it('writeFile throws on SDK error', async () => {
+    const mock = mockDevbox();
+    mock.client.devboxes.writeFileContents.mockRejectedValueOnce(new Error('permission denied'));
+    const adapter = runloop(mock);
+    await expect(adapter.writeFile('/etc/test', 'data')).rejects.toThrow('writeFile failed');
+  });
+
+  it('readFile throws on SDK error', async () => {
+    const mock = mockDevbox();
+    mock.client.devboxes.readFileContents.mockRejectedValueOnce(new Error('no such file'));
+    const adapter = runloop(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow('readFile failed');
+  });
+
+  it('exec returns error info when executeSync throws', async () => {
+    const mock = mockDevbox();
+    mock.client.devboxes.executeSync.mockRejectedValueOnce({ stdout: '', stderr: 'command not found', exit_status: 127 });
+    const adapter = runloop(mock);
+    const result = await adapter.exec('nonexistent', []);
+    expect(result.exitCode).toBe(127);
+    expect(result.stderr).toBe('command not found');
+  });
+
+  it('stop calls client.devboxes.shutdown', async () => {
+    const mock = mockDevbox();
+    const adapter = runloop(mock);
+    await adapter.stop!();
+    expect(mock.client.devboxes.shutdown).toHaveBeenCalledWith('devbox-123');
+  });
+});
+
+// ─── Provider defaults ──────────────────────────────────────
+
 describe('provider defaults', () => {
   const providers = [
     { name: 'vercelDefaults', fn: vercelDefaults },
@@ -725,6 +852,7 @@ describe('provider defaults', () => {
     { name: 'blaxelDefaults', fn: blaxelDefaults },
     { name: 'modalDefaults', fn: modalDefaults },
     { name: 'spritesDefaults', fn: spritesDefaults },
+    { name: 'runloopDefaults', fn: runloopDefaults },
   ];
 
   for (const { name, fn } of providers) {
@@ -808,5 +936,42 @@ describe('provider defaults', () => {
       .filter((r: any) => 'allow' in r)
       .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
     expect(allPaths).toContain('/app/**');
+  });
+
+  it('runloopDefaults denies credential paths', () => {
+    const { policy } = runloopDefaults() as any;
+    const denyPaths = policy.file
+      .filter((r: any) => 'deny' in r)
+      .flatMap((r: any) => Array.isArray(r.deny) ? r.deny : [r.deny]);
+    expect(denyPaths).toContain('~/.ssh/**');
+    expect(denyPaths).toContain('~/.aws/**');
+    expect(denyPaths).toContain('**/.env');
+  });
+
+  it('runloopDefaults blocks private networks', () => {
+    const { policy } = runloopDefaults() as any;
+    const denyCidrs = policy.network
+      .filter((r: any) => 'denyCidrs' in r)
+      .flatMap((r: any) => r.denyCidrs);
+    expect(denyCidrs).toContain('10.0.0.0/8');
+    expect(denyCidrs).toContain('169.254.169.254/32');
+  });
+
+  it('runloopDefaults blocks raw network tools', () => {
+    const { policy } = runloopDefaults() as any;
+    const denyCmds = policy.commands
+      .filter((r: any) => 'deny' in r)
+      .flatMap((r: any) => Array.isArray(r.deny) ? r.deny : [r.deny]);
+    expect(denyCmds).toContain('ssh');
+    expect(denyCmds).toContain('nc');
+    expect(denyCmds).toContain('kill');
+  });
+
+  it('runloopDefaults has soft-delete for workspace', () => {
+    const { policy } = runloopDefaults() as any;
+    const softDeletePaths = policy.file
+      .filter((r: any) => 'softDelete' in r)
+      .flatMap((r: any) => Array.isArray(r.softDelete) ? r.softDelete : [r.softDelete]);
+    expect(softDeletePaths).toContain('/workspace/**');
   });
 });

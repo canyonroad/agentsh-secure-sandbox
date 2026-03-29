@@ -5,3 +5,4 @@ export { cloudflare, cloudflareDefaults } from './cloudflare.js';
 export { blaxel, blaxelDefaults } from './blaxel.js';
 export { sprites, spritesDefaults } from './sprites.js';
 export { modal, modalDefaults } from './modal.js';
+export { runloop, runloopDefaults } from './runloop.js';
