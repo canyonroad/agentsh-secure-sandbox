@@ -45,6 +45,10 @@
       "types": "./dist/adapters/modal.d.ts",
       "import": "./dist/adapters/modal.js"
     },
+    "./adapters/runloop": {
+      "types": "./dist/adapters/runloop.d.ts",
+      "import": "./dist/adapters/runloop.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
@@ -66,6 +70,7 @@
     "test:e2e": "E2E=1 vitest run --config vitest.e2e.config.ts",
     "test:e2e:sprites": "npx tsx src/e2e/sprites-e2e-runner.ts",
     "test:e2e:modal": "npx tsx src/e2e/modal-e2e-runner.ts",
+    "test:e2e:runloop": "npx tsx src/e2e/runloop-e2e-runner.ts",
     "build:images": "npx tsx scripts/build-sandbox-images.ts",
     "build:images:e2b": "npx tsx scripts/build-sandbox-images.ts --provider e2b",
     "build:images:cloudflare": "npx tsx scripts/build-sandbox-images.ts --provider cloudflare",
@@ -82,6 +87,7 @@
     "@cloudflare/sandbox": "^0.7.13",
     "@daytonaio/sdk": "^0.149.0",
     "@fly/sprites": "^0.0.1",
+    "@runloop/api-client": "^1.14.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
     "@vercel/sandbox": "^1.8.0",
@@ -98,7 +104,8 @@
     "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
     "@e2b/code-interpreter": "^1.2.0",
     "@fly/sprites": "^0.0.1",
-    "@vercel/sandbox": "^1.0.0"
+    "@vercel/sandbox": "^1.0.0",
+    "@runloop/api-client": "^1.0.0"
   },
   "peerDependenciesMeta": {
     "@vercel/sandbox": {
@@ -117,6 +124,9 @@
       "optional": true
     },
     "@fly/sprites": {
+      "optional": true
+    },
+    "@runloop/api-client": {
       "optional": true
     }
   }
