@@ -178,6 +178,188 @@ describe('serializePolicy', () => {
     expect(parsed.file_rules.length).toBeGreaterThan(0);
     expect(parsed.network_rules.length).toBeGreaterThan(0);
     expect(parsed.command_rules.length).toBeGreaterThan(0);
+    expect(parsed.env_policy).toBeDefined();
+    expect(parsed.signal_rules.length).toBeGreaterThan(0);
+    expect(parsed.unix_socket_rules.length).toBeGreaterThan(0);
+    expect(parsed.resource_limits).toBeDefined();
+    expect(parsed.audit).toBeDefined();
+  });
+
+  // ─── envPolicy ──────────────────────────────────────────────
+
+  it('serializes envPolicy with all fields', () => {
+    const result = serializePolicy({
+      envPolicy: {
+        allow: ['PATH', 'HOME'],
+        deny: ['*_SECRET*', '*_PASSWORD*'],
+        maxBytes: 1024,
+        maxKeys: 50,
+        blockIteration: true,
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.env_policy.allow).toEqual(['PATH', 'HOME']);
+    expect(parsed.env_policy.deny).toEqual(['*_SECRET*', '*_PASSWORD*']);
+    expect(parsed.env_policy.max_bytes).toBe(1024);
+    expect(parsed.env_policy.max_keys).toBe(50);
+    expect(parsed.env_policy.block_iteration).toBe(true);
+  });
+
+  it('serializes envPolicy with only deny', () => {
+    const result = serializePolicy({
+      envPolicy: { deny: ['SECRET_KEY'] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.env_policy.deny).toEqual(['SECRET_KEY']);
+    expect(parsed.env_policy.allow).toBeUndefined();
+    expect(parsed.env_policy.max_bytes).toBeUndefined();
+  });
+
+  it('omits env_policy when envPolicy is not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.env_policy).toBeUndefined();
+  });
+
+  // ─── signalRules ────────────────────────────────────────────
+
+  it('serializes signalRules', () => {
+    const result = serializePolicy({
+      signalRules: [
+        { name: 'allow-self', signals: ['@all'], target: { type: 'self' }, decision: 'allow' },
+        { name: 'deny-ext', signals: ['@fatal'], target: { type: 'external' }, decision: 'deny', fallback: 'audit', message: 'Blocked' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.signal_rules).toHaveLength(2);
+    expect(parsed.signal_rules[0].name).toBe('allow-self');
+    expect(parsed.signal_rules[0].signals).toEqual(['@all']);
+    expect(parsed.signal_rules[0].target).toEqual({ type: 'self' });
+    expect(parsed.signal_rules[0].decision).toBe('allow');
+    expect(parsed.signal_rules[1].fallback).toBe('audit');
+    expect(parsed.signal_rules[1].message).toBe('Blocked');
+  });
+
+  it('serializes signalRule with target pattern', () => {
+    const result = serializePolicy({
+      signalRules: [
+        { name: 'test', signals: ['SIGTERM'], target: { type: 'external', pattern: 'nginx*' }, decision: 'deny' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.signal_rules[0].target).toEqual({ type: 'external', pattern: 'nginx*' });
+  });
+
+  it('omits signal_rules when signalRules is empty', () => {
+    const result = serializePolicy({ signalRules: [] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.signal_rules).toBeUndefined();
+  });
+
+  // ─── unixSocketRules ────────────────────────────────────────
+
+  it('serializes unixSocketRules', () => {
+    const result = serializePolicy({
+      unixSocketRules: [
+        { name: 'allow-docker', paths: ['/var/run/docker.sock'], operations: ['connect'], decision: 'allow' },
+        { name: 'deny-system', paths: ['/var/run/**'], decision: 'deny', message: 'Blocked' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.unix_socket_rules).toHaveLength(2);
+    expect(parsed.unix_socket_rules[0].name).toBe('allow-docker');
+    expect(parsed.unix_socket_rules[0].paths).toEqual(['/var/run/docker.sock']);
+    expect(parsed.unix_socket_rules[0].operations).toEqual(['connect']);
+    expect(parsed.unix_socket_rules[0].decision).toBe('allow');
+    expect(parsed.unix_socket_rules[1].message).toBe('Blocked');
+  });
+
+  it('omits operations when not provided in unixSocketRule', () => {
+    const result = serializePolicy({
+      unixSocketRules: [
+        { name: 'test', paths: ['/tmp/test.sock'], decision: 'deny' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.unix_socket_rules[0].operations).toBeUndefined();
+  });
+
+  it('omits unix_socket_rules when unixSocketRules is empty', () => {
+    const result = serializePolicy({ unixSocketRules: [] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.unix_socket_rules).toBeUndefined();
+  });
+
+  // ─── resourceLimits ─────────────────────────────────────────
+
+  it('serializes resourceLimits with snake_case keys', () => {
+    const result = serializePolicy({
+      resourceLimits: {
+        maxMemoryMb: 8192,
+        cpuQuotaPercent: 100,
+        pidsMax: 500,
+        commandTimeout: '15m',
+        sessionTimeout: '12h',
+        idleTimeout: '30m',
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.resource_limits.max_memory_mb).toBe(8192);
+    expect(parsed.resource_limits.cpu_quota_percent).toBe(100);
+    expect(parsed.resource_limits.pids_max).toBe(500);
+    expect(parsed.resource_limits.command_timeout).toBe('15m');
+    expect(parsed.resource_limits.session_timeout).toBe('12h');
+    expect(parsed.resource_limits.idle_timeout).toBe('30m');
+  });
+
+  it('serializes partial resourceLimits', () => {
+    const result = serializePolicy({
+      resourceLimits: { maxMemoryMb: 4096 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.resource_limits.max_memory_mb).toBe(4096);
+    expect(parsed.resource_limits.cpu_quota_percent).toBeUndefined();
+  });
+
+  it('omits resource_limits when not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.resource_limits).toBeUndefined();
+  });
+
+  // ─── auditSettings ─────────────────────────────────────────
+
+  it('serializes auditSettings with snake_case keys', () => {
+    const result = serializePolicy({
+      auditSettings: {
+        logAllowed: false,
+        logDenied: true,
+        logApproved: true,
+        includeStdout: false,
+        includeStderr: true,
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.log_allowed).toBe(false);
+    expect(parsed.audit.log_denied).toBe(true);
+    expect(parsed.audit.log_approved).toBe(true);
+    expect(parsed.audit.include_stdout).toBe(false);
+    expect(parsed.audit.include_stderr).toBe(true);
+  });
+
+  it('serializes partial auditSettings', () => {
+    const result = serializePolicy({
+      auditSettings: { logDenied: true },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.log_denied).toBe(true);
+    expect(parsed.audit.log_allowed).toBeUndefined();
+  });
+
+  it('omits audit when auditSettings is not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit).toBeUndefined();
   });
 
   // ─── Package rules ──────────────────────────────────────────

@@ -7,7 +7,7 @@ RUN apt-get update && \
 
 # Pre-install agentsh v0.16.9
 ARG AGENTSH_VERSION=0.16.9
-RUN echo "agentsh checksum: 6928a92ab040ca014be21f08f6d5df177d66685c85d62a82758511a7312b2795" && \
+RUN echo "agentsh checksum: 37b7be738291e90957a13653c5bb60b3cbbf9ab5abbc932e00e679a431f9064e" && \
     curl -fsSL "https://github.com/canyonroad/agentsh/releases/download/v${AGENTSH_VERSION}/agentsh_${AGENTSH_VERSION}_linux_amd64.tar.gz" \
       -o /tmp/agentsh.tar.gz && \
     tar xz -C /tmp/ -f /tmp/agentsh.tar.gz && \

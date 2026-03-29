@@ -8,6 +8,11 @@ import type {
   DnsRedirect,
   ConnectRedirect,
   PackageRule,
+  EnvPolicy,
+  SignalRule,
+  UnixSocketRule,
+  ResourceLimits,
+  AuditSettings,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -238,6 +243,75 @@ function serializePackageRules(
   });
 }
 
+// ─── Env policy (top-level) ─────────────────────────────────
+
+function serializeEnvPolicy(policy: EnvPolicy): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (policy.allow) out.allow = policy.allow;
+  if (policy.deny) out.deny = policy.deny;
+  if (policy.maxBytes !== undefined) out.max_bytes = policy.maxBytes;
+  if (policy.maxKeys !== undefined) out.max_keys = policy.maxKeys;
+  if (policy.blockIteration !== undefined) out.block_iteration = policy.blockIteration;
+  return out;
+}
+
+// ─── Signal rules ──────────────────────────────────────────
+
+function serializeSignalRules(rules: SignalRule[]): Record<string, unknown>[] {
+  return rules.map((rule) => {
+    const out: Record<string, unknown> = {
+      name: rule.name,
+      signals: rule.signals,
+      target: { type: rule.target.type },
+      decision: rule.decision,
+    };
+    if (rule.target.pattern) (out.target as any).pattern = rule.target.pattern;
+    if (rule.fallback) out.fallback = rule.fallback;
+    if (rule.message) out.message = rule.message;
+    return out;
+  });
+}
+
+// ─── Unix socket rules ────────────────────────────────────
+
+function serializeUnixSocketRules(rules: UnixSocketRule[]): Record<string, unknown>[] {
+  return rules.map((rule) => {
+    const out: Record<string, unknown> = {
+      name: rule.name,
+      paths: rule.paths,
+      decision: rule.decision,
+    };
+    if (rule.operations) out.operations = rule.operations;
+    if (rule.message) out.message = rule.message;
+    return out;
+  });
+}
+
+// ─── Resource limits ───────────────────────────────────────
+
+function serializeResourceLimits(limits: ResourceLimits): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (limits.maxMemoryMb !== undefined) out.max_memory_mb = limits.maxMemoryMb;
+  if (limits.cpuQuotaPercent !== undefined) out.cpu_quota_percent = limits.cpuQuotaPercent;
+  if (limits.pidsMax !== undefined) out.pids_max = limits.pidsMax;
+  if (limits.commandTimeout !== undefined) out.command_timeout = limits.commandTimeout;
+  if (limits.sessionTimeout !== undefined) out.session_timeout = limits.sessionTimeout;
+  if (limits.idleTimeout !== undefined) out.idle_timeout = limits.idleTimeout;
+  return out;
+}
+
+// ─── Audit settings ────────────────────────────────────────
+
+function serializeAuditSettings(settings: AuditSettings): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (settings.logAllowed !== undefined) out.log_allowed = settings.logAllowed;
+  if (settings.logDenied !== undefined) out.log_denied = settings.logDenied;
+  if (settings.logApproved !== undefined) out.log_approved = settings.logApproved;
+  if (settings.includeStdout !== undefined) out.include_stdout = settings.includeStdout;
+  if (settings.includeStderr !== undefined) out.include_stderr = settings.includeStderr;
+  return out;
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 /**
@@ -277,6 +351,26 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.packageRules && policy.packageRules.length > 0) {
     doc.package_rules = serializePackageRules(policy.packageRules);
+  }
+
+  if (policy.envPolicy) {
+    doc.env_policy = serializeEnvPolicy(policy.envPolicy);
+  }
+
+  if (policy.signalRules && policy.signalRules.length > 0) {
+    doc.signal_rules = serializeSignalRules(policy.signalRules);
+  }
+
+  if (policy.unixSocketRules && policy.unixSocketRules.length > 0) {
+    doc.unix_socket_rules = serializeUnixSocketRules(policy.unixSocketRules);
+  }
+
+  if (policy.resourceLimits) {
+    doc.resource_limits = serializeResourceLimits(policy.resourceLimits);
+  }
+
+  if (policy.auditSettings) {
+    doc.audit = serializeAuditSettings(policy.auditSettings);
   }
 
   return yaml.dump(doc, { lineWidth: -1 });

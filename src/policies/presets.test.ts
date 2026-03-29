@@ -60,12 +60,22 @@ describe('presets', () => {
       expect(systemRead.ops).not.toContain('write');
     });
 
-    it('allows device files', () => {
+    it('allows /opt/** and /dev/** in system read', () => {
+      const policy = agentDefault();
+      const systemRead = policy.file!.find(
+        r => 'allow' in r && Array.isArray((r as any).allow) && (r as any).allow.includes('/usr/**'),
+      ) as any;
+      expect(systemRead.allow).toContain('/opt/**');
+      expect(systemRead.allow).toContain('/dev/**');
+    });
+
+    it('allows device files including /dev/shm/**', () => {
       const policy = agentDefault();
       const devRule = policy.file!.find(
         r => 'allow' in r && Array.isArray((r as any).allow) && (r as any).allow.includes('/dev/null'),
-      );
+      ) as any;
       expect(devRule).toBeDefined();
+      expect(devRule.allow).toContain('/dev/shm/**');
     });
 
     it('allows /proc/self for introspection', () => {
@@ -164,6 +174,16 @@ describe('presets', () => {
       expect(agentConfigRule.ops).not.toContain('read');
     });
 
+    it('allows LLM providers (Anthropic, OpenAI, Google)', () => {
+      const policy = agentDefault();
+      const allowDomains = policy.network!
+        .filter((r): r is { allow: string | string[]; ports?: number[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      expect(allowDomains).toContain('api.anthropic.com');
+      expect(allowDomains).toContain('api.openai.com');
+      expect(allowDomains).toContain('generativelanguage.googleapis.com');
+    });
+
     it('allows Go, Rust, and GitHub domains', () => {
       const policy = agentDefault();
       const allowDomains = policy.network!
@@ -172,6 +192,56 @@ describe('presets', () => {
       expect(allowDomains).toContain('crates.io');
       expect(allowDomains).toContain('proxy.golang.org');
       expect(allowDomains).toContain('github.com');
+    });
+
+    it('allows GitLab and Bitbucket', () => {
+      const policy = agentDefault();
+      const allowDomains = policy.network!
+        .filter((r): r is { allow: string | string[]; ports?: number[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      expect(allowDomains).toContain('gitlab.com');
+      expect(allowDomains).toContain('bitbucket.org');
+    });
+
+    it('allows CDNs', () => {
+      const policy = agentDefault();
+      const allowDomains = policy.network!
+        .filter((r): r is { allow: string | string[]; ports?: number[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      expect(allowDomains).toContain('*.cloudflare.com');
+      expect(allowDomains).toContain('cdn.jsdelivr.net');
+    });
+
+    it('allows comprehensive dev tools (compilers, runtimes, AI tools)', () => {
+      const policy = agentDefault();
+      const allowCommands = policy.commands!
+        .filter((r): r is { allow: string | string[] } => 'allow' in r)
+        .flatMap(r => Array.isArray(r.allow) ? r.allow : [r.allow]);
+      // Dev tools
+      expect(allowCommands).toContain('deno');
+      expect(allowCommands).toContain('uv');
+      expect(allowCommands).toContain('gcc');
+      expect(allowCommands).toContain('javac');
+      // Build/test
+      expect(allowCommands).toContain('pytest');
+      expect(allowCommands).toContain('vitest');
+      expect(allowCommands).toContain('eslint');
+      // Containers
+      expect(allowCommands).toContain('docker');
+      // AI tools
+      expect(allowCommands).toContain('claude');
+      expect(allowCommands).toContain('gh');
+    });
+
+    it('denies system package managers', () => {
+      const policy = agentDefault();
+      const denyCommands = policy.commands!
+        .filter((r): r is { deny: string | string[] } => 'deny' in r)
+        .flatMap(r => Array.isArray(r.deny) ? r.deny : [r.deny]);
+      expect(denyCommands).toContain('apt');
+      expect(denyCommands).toContain('apt-get');
+      expect(denyCommands).toContain('yum');
+      expect(denyCommands).toContain('brew');
     });
 
     it('accepts extensions and appends them', () => {
@@ -190,6 +260,105 @@ describe('presets', () => {
       const extended = agentDefault({ network: [{ allow: ['extra.com'] }] });
       const base2 = agentDefault();
       expect(base1.network!.length).toBe(base2.network!.length);
+    });
+
+    describe('envPolicy', () => {
+      it('has envPolicy with deny patterns', () => {
+        const policy = agentDefault();
+        expect(policy.envPolicy).toBeDefined();
+        expect(policy.envPolicy!.deny).toContain('*_SECRET*');
+        expect(policy.envPolicy!.deny).toContain('*_PASSWORD*');
+        expect(policy.envPolicy!.deny).toContain('ANTHROPIC_API_KEY');
+        expect(policy.envPolicy!.deny).toContain('OPENAI_API_KEY');
+      });
+
+      it('blocks env iteration', () => {
+        const policy = agentDefault();
+        expect(policy.envPolicy!.blockIteration).toBe(true);
+      });
+    });
+
+    describe('signalRules', () => {
+      it('has signalRules', () => {
+        const policy = agentDefault();
+        expect(policy.signalRules).toBeDefined();
+        expect(policy.signalRules!.length).toBeGreaterThan(0);
+      });
+
+      it('allows self and children signals', () => {
+        const policy = agentDefault();
+        const selfRule = policy.signalRules!.find(r => r.target.type === 'self');
+        const childRule = policy.signalRules!.find(r => r.target.type === 'children');
+        expect(selfRule).toBeDefined();
+        expect(selfRule!.decision).toBe('allow');
+        expect(childRule).toBeDefined();
+        expect(childRule!.decision).toBe('allow');
+      });
+
+      it('denies system signals', () => {
+        const policy = agentDefault();
+        const systemRule = policy.signalRules!.find(r => r.target.type === 'system');
+        expect(systemRule).toBeDefined();
+        expect(systemRule!.decision).toBe('deny');
+      });
+    });
+
+    describe('unixSocketRules', () => {
+      it('has unixSocketRules', () => {
+        const policy = agentDefault();
+        expect(policy.unixSocketRules).toBeDefined();
+        expect(policy.unixSocketRules!.length).toBe(2);
+      });
+
+      it('allows docker socket', () => {
+        const policy = agentDefault();
+        const dockerRule = policy.unixSocketRules!.find(r => r.paths.includes('/var/run/docker.sock'));
+        expect(dockerRule).toBeDefined();
+        expect(dockerRule!.decision).toBe('allow');
+      });
+
+      it('denies system sockets', () => {
+        const policy = agentDefault();
+        const systemRule = policy.unixSocketRules!.find(r => r.paths.includes('/var/run/**'));
+        expect(systemRule).toBeDefined();
+        expect(systemRule!.decision).toBe('deny');
+      });
+    });
+
+    describe('resourceLimits', () => {
+      it('has resourceLimits', () => {
+        const policy = agentDefault();
+        expect(policy.resourceLimits).toBeDefined();
+      });
+
+      it('sets reasonable defaults', () => {
+        const policy = agentDefault();
+        expect(policy.resourceLimits!.maxMemoryMb).toBe(8192);
+        expect(policy.resourceLimits!.cpuQuotaPercent).toBe(100);
+        expect(policy.resourceLimits!.pidsMax).toBe(500);
+        expect(policy.resourceLimits!.commandTimeout).toBe('15m');
+        expect(policy.resourceLimits!.sessionTimeout).toBe('12h');
+      });
+    });
+
+    describe('auditSettings', () => {
+      it('has auditSettings', () => {
+        const policy = agentDefault();
+        expect(policy.auditSettings).toBeDefined();
+      });
+
+      it('logs denied and approved but not allowed', () => {
+        const policy = agentDefault();
+        expect(policy.auditSettings!.logAllowed).toBe(false);
+        expect(policy.auditSettings!.logDenied).toBe(true);
+        expect(policy.auditSettings!.logApproved).toBe(true);
+      });
+
+      it('includes stderr but not stdout', () => {
+        const policy = agentDefault();
+        expect(policy.auditSettings!.includeStdout).toBe(false);
+        expect(policy.auditSettings!.includeStderr).toBe(true);
+      });
     });
 
     describe('packageRules', () => {

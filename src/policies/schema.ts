@@ -152,6 +152,75 @@ export const PackageRuleSchema = z
   })
   .strict();
 
+// ─── Env policy (top-level, distinct from per-command env rules) ─
+
+export const EnvPolicySchema = z
+  .object({
+    allow: z.array(z.string()).optional(),
+    deny: z.array(z.string()).optional(),
+    maxBytes: z.number().int().optional(),
+    maxKeys: z.number().int().optional(),
+    blockIteration: z.boolean().optional(),
+  })
+  .strict();
+
+// ─── Signal rules ──────────────────────────────────────────
+
+const SignalTargetSchema = z
+  .object({
+    type: z.enum(['self', 'children', 'session', 'parent', 'external', 'system']),
+    pattern: z.string().optional(),
+  })
+  .strict();
+
+export const SignalRuleSchema = z
+  .object({
+    name: z.string(),
+    signals: z.array(z.string()),
+    target: SignalTargetSchema,
+    decision: z.enum(['allow', 'deny', 'audit']),
+    fallback: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .strict();
+
+// ─── Unix socket rules ────────────────────────────────────
+
+export const UnixSocketRuleSchema = z
+  .object({
+    name: z.string(),
+    paths: z.array(z.string()),
+    operations: z.array(z.string()).optional(),
+    decision: z.enum(['allow', 'deny']),
+    message: z.string().optional(),
+  })
+  .strict();
+
+// ─── Resource limits ───────────────────────────────────────
+
+export const ResourceLimitsSchema = z
+  .object({
+    maxMemoryMb: z.number().int().optional(),
+    cpuQuotaPercent: z.number().int().optional(),
+    pidsMax: z.number().int().optional(),
+    commandTimeout: z.string().optional(),
+    sessionTimeout: z.string().optional(),
+    idleTimeout: z.string().optional(),
+  })
+  .strict();
+
+// ─── Audit settings ────────────────────────────────────────
+
+export const AuditSettingsSchema = z
+  .object({
+    logAllowed: z.boolean().optional(),
+    logDenied: z.boolean().optional(),
+    logApproved: z.boolean().optional(),
+    includeStdout: z.boolean().optional(),
+    includeStderr: z.boolean().optional(),
+  })
+  .strict();
+
 // ─── PolicyDefinition ───────────────────────────────────────
 
 export const PolicyDefinitionSchema = z
@@ -163,6 +232,11 @@ export const PolicyDefinitionSchema = z
     dns: z.array(DnsRedirectSchema).optional(),
     connect: z.array(ConnectRedirectSchema).optional(),
     packageRules: z.array(PackageRuleSchema).optional(),
+    envPolicy: EnvPolicySchema.optional(),
+    signalRules: z.array(SignalRuleSchema).optional(),
+    unixSocketRules: z.array(UnixSocketRuleSchema).optional(),
+    resourceLimits: ResourceLimitsSchema.optional(),
+    auditSettings: AuditSettingsSchema.optional(),
   })
   .strict();
 
@@ -177,6 +251,11 @@ export type EnvRule = z.infer<typeof EnvRuleSchema>;
 export type DnsRedirect = z.infer<typeof DnsRedirectSchema>;
 export type ConnectRedirect = z.infer<typeof ConnectRedirectSchema>;
 export type PackageRule = z.infer<typeof PackageRuleSchema>;
+export type EnvPolicy = z.infer<typeof EnvPolicySchema>;
+export type SignalRule = z.infer<typeof SignalRuleSchema>;
+export type UnixSocketRule = z.infer<typeof UnixSocketRuleSchema>;
+export type ResourceLimits = z.infer<typeof ResourceLimitsSchema>;
+export type AuditSettings = z.infer<typeof AuditSettingsSchema>;
 
 // ─── Validation ─────────────────────────────────────────────
 

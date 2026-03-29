@@ -203,3 +203,112 @@ describe('mergePrepend', () => {
     expect(result.packageRules![1].match.findingType).toBe('malware');
   });
 });
+
+describe('merge — object categories', () => {
+  it('shallow-merges envPolicy (override wins)', () => {
+    const base: PolicyDefinition = {
+      envPolicy: { deny: ['*_SECRET*'], blockIteration: true },
+    };
+    const extension: Partial<PolicyDefinition> = {
+      envPolicy: { deny: ['*_PASSWORD*'], maxBytes: 2048 },
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.envPolicy!.deny).toEqual(['*_PASSWORD*']);
+    expect(result.envPolicy!.maxBytes).toBe(2048);
+    expect(result.envPolicy!.blockIteration).toBe(true);
+  });
+
+  it('shallow-merges resourceLimits (override wins)', () => {
+    const base: PolicyDefinition = {
+      resourceLimits: { maxMemoryMb: 8192, pidsMax: 500, commandTimeout: '15m' },
+    };
+    const extension: Partial<PolicyDefinition> = {
+      resourceLimits: { maxMemoryMb: 4096, idleTimeout: '10m' },
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.resourceLimits!.maxMemoryMb).toBe(4096);
+    expect(result.resourceLimits!.pidsMax).toBe(500);
+    expect(result.resourceLimits!.commandTimeout).toBe('15m');
+    expect(result.resourceLimits!.idleTimeout).toBe('10m');
+  });
+
+  it('shallow-merges auditSettings (override wins)', () => {
+    const base: PolicyDefinition = {
+      auditSettings: { logAllowed: false, logDenied: true },
+    };
+    const extension: Partial<PolicyDefinition> = {
+      auditSettings: { logAllowed: true, includeStderr: true },
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.auditSettings!.logAllowed).toBe(true);
+    expect(result.auditSettings!.logDenied).toBe(true);
+    expect(result.auditSettings!.includeStderr).toBe(true);
+  });
+
+  it('adds object category when base has none', () => {
+    const base: PolicyDefinition = {
+      file: [{ allow: '/workspace/**' }],
+    };
+    const extension: Partial<PolicyDefinition> = {
+      envPolicy: { deny: ['SECRET'], blockIteration: true },
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.envPolicy).toEqual({ deny: ['SECRET'], blockIteration: true });
+  });
+
+  it('preserves object category when override has none', () => {
+    const base: PolicyDefinition = {
+      resourceLimits: { maxMemoryMb: 8192 },
+    };
+
+    const result = merge(base, {});
+
+    expect(result.resourceLimits).toEqual({ maxMemoryMb: 8192 });
+  });
+
+  it('appends signalRules as array category', () => {
+    const base: PolicyDefinition = {
+      signalRules: [
+        { name: 'allow-self', signals: ['@all'], target: { type: 'self' }, decision: 'allow' },
+      ],
+    };
+    const extension: Partial<PolicyDefinition> = {
+      signalRules: [
+        { name: 'deny-ext', signals: ['@fatal'], target: { type: 'external' }, decision: 'deny' },
+      ],
+    };
+
+    const result = merge(base, extension);
+
+    expect(result.signalRules).toHaveLength(2);
+    expect(result.signalRules![0].name).toBe('allow-self');
+    expect(result.signalRules![1].name).toBe('deny-ext');
+  });
+
+  it('prepends unixSocketRules as array category', () => {
+    const base: PolicyDefinition = {
+      unixSocketRules: [
+        { name: 'deny-all', paths: ['/var/run/**'], decision: 'deny' },
+      ],
+    };
+    const extension: Partial<PolicyDefinition> = {
+      unixSocketRules: [
+        { name: 'allow-docker', paths: ['/var/run/docker.sock'], decision: 'allow' },
+      ],
+    };
+
+    const result = mergePrepend(base, extension);
+
+    expect(result.unixSocketRules).toHaveLength(2);
+    expect(result.unixSocketRules![0].name).toBe('allow-docker');
+    expect(result.unixSocketRules![1].name).toBe('deny-all');
+  });
+});

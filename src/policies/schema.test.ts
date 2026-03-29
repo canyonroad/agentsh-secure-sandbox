@@ -208,6 +208,154 @@ describe('PolicyDefinitionSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  // ─── envPolicy ───────────────────────────────────────────
+
+  it('accepts valid envPolicy', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      envPolicy: {
+        deny: ['*_SECRET*', '*_PASSWORD*'],
+        blockIteration: true,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts envPolicy with allow, deny, maxBytes, maxKeys', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      envPolicy: {
+        allow: ['PATH', 'HOME'],
+        deny: ['SECRET_KEY'],
+        maxBytes: 1024,
+        maxKeys: 50,
+        blockIteration: false,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty envPolicy', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      envPolicy: {},
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects envPolicy with unknown fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      envPolicy: { deny: ['*'], extra: true },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ─── signalRules ─────────────────────────────────────────
+
+  it('accepts valid signalRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      signalRules: [
+        { name: 'allow-self', signals: ['@all'], target: { type: 'self' }, decision: 'allow' },
+        { name: 'deny-external', signals: ['@fatal'], target: { type: 'external' }, decision: 'deny', fallback: 'audit', message: 'Blocked' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all signal target types', () => {
+    for (const type of ['self', 'children', 'session', 'parent', 'external', 'system'] as const) {
+      const result = PolicyDefinitionSchema.safeParse({
+        signalRules: [{ name: `test-${type}`, signals: ['SIGTERM'], target: { type }, decision: 'allow' }],
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects signalRule with unknown target type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      signalRules: [{ name: 'bad', signals: ['SIGTERM'], target: { type: 'invalid' }, decision: 'allow' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects signalRule without name', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      signalRules: [{ signals: ['SIGTERM'], target: { type: 'self' }, decision: 'allow' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ─── unixSocketRules ─────────────────────────────────────
+
+  it('accepts valid unixSocketRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      unixSocketRules: [
+        { name: 'allow-docker', paths: ['/var/run/docker.sock'], operations: ['connect'], decision: 'allow' },
+        { name: 'deny-system', paths: ['/var/run/**'], decision: 'deny', message: 'Blocked' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unixSocketRule with invalid decision', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      unixSocketRules: [{ name: 'bad', paths: ['/x'], decision: 'audit' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ─── resourceLimits ──────────────────────────────────────
+
+  it('accepts valid resourceLimits', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      resourceLimits: {
+        maxMemoryMb: 8192,
+        cpuQuotaPercent: 100,
+        pidsMax: 500,
+        commandTimeout: '15m',
+        sessionTimeout: '12h',
+        idleTimeout: '30m',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty resourceLimits', () => {
+    const result = PolicyDefinitionSchema.safeParse({ resourceLimits: {} });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects resourceLimits with unknown fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      resourceLimits: { maxMemoryMb: 1024, extra: true },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ─── auditSettings ──────────────────────────────────────
+
+  it('accepts valid auditSettings', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      auditSettings: {
+        logAllowed: false,
+        logDenied: true,
+        logApproved: true,
+        includeStdout: false,
+        includeStderr: true,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty auditSettings', () => {
+    const result = PolicyDefinitionSchema.safeParse({ auditSettings: {} });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects auditSettings with unknown fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      auditSettings: { logDenied: true, extra: 'field' },
+    });
+    expect(result.success).toBe(false);
+  });
+
   // Port validation
   it('rejects port 0', () => {
     const result = PolicyDefinitionSchema.safeParse({
