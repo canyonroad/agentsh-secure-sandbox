@@ -360,6 +360,10 @@ if (secured) {
 
 // ── Cleanup ──────────────────────────────────────────────────
 
+if (secured) {
+  try { await secured.stop(); } catch {}
+}
+
 if (!KEEP_VM && !reused) {
   console.log('\n  \u2192 destroying exe.dev VM...');
   try {
