@@ -72,7 +72,7 @@ console.log('▶ Runloop E2E — adapter + secureSandbox tests');
 // ── Create Runloop devbox ───────────────────────────────────────
 
 const RunloopSdk = (await import('@runloop/api-client')).default;
-const client = new RunloopSdk({ apiKey: RUNLOOP_API_KEY });
+const client = new RunloopSdk();
 
 console.log('  → creating Runloop devbox...');
 
