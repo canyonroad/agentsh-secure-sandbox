@@ -49,6 +49,10 @@
       "types": "./dist/adapters/runloop.d.ts",
       "import": "./dist/adapters/runloop.js"
     },
+    "./adapters/exe": {
+      "types": "./dist/adapters/exe.d.ts",
+      "import": "./dist/adapters/exe.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
