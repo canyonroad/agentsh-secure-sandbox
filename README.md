@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), and [Modal](https://modal.com). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), [Modal](https://modal.com), [Runloop](https://runloop.ai), and [exe.dev](https://exe.dev). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -110,14 +110,14 @@ Enforcement happens at the **kernel level** — Landlock restricts filesystem ac
 
 Every provider gets the same protections — the enforcement mechanism adapts to what the kernel supports:
 
-| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal |
-|------------|--------|-----|---------|------------|--------|---------|-------|
-| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal | Runloop | exe.dev |
+|------------|--------|-----|---------|------------|--------|---------|-------|---------|---------|
+| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Different platforms use different kernel mechanisms to achieve these protections:
 
@@ -130,10 +130,14 @@ Different platforms use different kernel mechanisms to achieve these protections
 | [**Blaxel**](https://blaxel.ai/sandbox) | Landlock + network proxy + shell shim | `full` |
 | [**Sprites**](https://sprites.dev) | Landlock + network proxy + shell shim | `full` |
 | [**Modal**](https://modal.com) | ptrace (execve + openat + connect + signal) + network proxy | `ptrace` |
+| [**Runloop**](https://runloop.ai) | Landlock + network proxy + shell shim | `full` |
+| [**exe.dev**](https://exe.dev) | ptrace + seccomp + Landlock + FUSE + cgroups + network proxy | `full` |
 
 > **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
 >
 > **Modal:** gVisor doesn't support seccomp user-notify or Landlock. ptrace provides equivalent enforcement by intercepting syscalls via `PTRACE_SEIZE`.
+>
+> **exe.dev:** Full kernel capabilities — all enforcement layers active (ptrace + seccomp + Landlock + FUSE + cgroups). Persistent VMs accessed via SSH; `stop()` is a no-op.
 
 ```typescript
 // E2B
@@ -164,6 +168,19 @@ import { modal, modalDefaults } from '@agentsh/secure-sandbox/adapters/modal';
 const sandbox = await secureSandbox(modal(modalSandbox), {
   ...modalDefaults(),
   // your overrides
+});
+
+// Runloop
+import { runloop, runloopDefaults } from '@agentsh/secure-sandbox/adapters/runloop';
+const sandbox = await secureSandbox(runloop({ client, id: devboxId }), {
+  ...runloopDefaults(),
+});
+
+// exe.dev (persistent SSH-accessible VMs — full enforcement)
+import { exe, exeDefaults } from '@agentsh/secure-sandbox/adapters/exe';
+// VM already created: ssh exe.dev new --name=my-vm --image=ubuntu:22.04
+const sandbox = await secureSandbox(exe('my-vm'), {
+  ...exeDefaults(),
 });
 ```
 

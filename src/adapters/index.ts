@@ -6,3 +6,4 @@ export { blaxel, blaxelDefaults } from './blaxel.js';
 export { sprites, spritesDefaults } from './sprites.js';
 export { modal, modalDefaults } from './modal.js';
 export { runloop, runloopDefaults } from './runloop.js';
+export { exe, exeDefaults } from './exe.js';

@@ -100,7 +100,7 @@ The security level depends on what the sandbox kernel supports. `secureSandbox()
 
 | Mode | Enforcement | Typical Platform |
 |------|-------------|-----------------|
-| `full` | seccomp + FUSE + Landlock + network proxy | Full Linux with FUSE support (E2B, Daytona, Blaxel) |
+| `full` | seccomp + FUSE + Landlock + network proxy | Full Linux with FUSE support (E2B, Daytona, Blaxel, exe.dev) |
 | `ptrace` | ptrace syscall interception + network proxy (exec, file, network, signal) | gVisor-based platforms (Modal) |
 | `landlock` | Landlock + network proxy (no FUSE) | Firecracker VMs (Vercel, Cloudflare) |
 | `landlock-only` | Landlock filesystem restrictions only | Limited kernel support |
@@ -354,6 +354,92 @@ const sandbox = await secureSandbox(modal(modalSandbox), {
   ...modalDefaults(),
   policy: myPolicy,
   watchtower: 'https://watchtower.example.com',
+});
+```
+
+## Runloop Adapter
+
+The Runloop adapter wraps a [Runloop](https://runloop.ai) devbox for use with persistent cloud development environments.
+
+```typescript
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { runloop, runloopDefaults } from '@agentsh/secure-sandbox/adapters/runloop';
+import RunloopSdk from '@runloop/api-client';
+
+const client = new RunloopSdk();
+const devbox = await client.devboxes.createAndAwaitRunning({});
+const sandbox = await secureSandbox(runloop({ client, id: devbox.id }), {
+  ...runloopDefaults(),
+});
+
+const result = await sandbox.exec('echo hello');
+await sandbox.stop(); // shuts down the devbox
+```
+
+### `runloop({ client, id })`
+
+Creates a `SandboxAdapter` from a Runloop SDK client and devbox ID. Commands are executed via `client.devboxes.executeSync()`. File operations use base64 encode/decode.
+
+### `runloopDefaults()`
+
+Returns Runloop-optimized `Partial<SecureConfig>` with a standalone high-security `PolicyDefinition`:
+
+- `installStrategy: 'download'` — download agentsh from GitHub releases
+- `realPaths: true` — use real host paths
+- Deny-by-default file, network, and command rules
+- Full server config: gRPC, audit logging, FUSE deferred, cgroups, DLP, ptrace (execve only)
+
+## exe.dev Adapter
+
+The exe.dev adapter wraps a persistent [exe.dev](https://exe.dev) VM accessed via SSH through the exe.dev gateway. exe.dev VMs have full kernel capabilities, enabling all enforcement layers.
+
+```typescript
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import { exe, exeDefaults } from '@agentsh/secure-sandbox/adapters/exe';
+
+// VM already created: ssh exe.dev new --name=my-vm --image=ubuntu:22.04
+const sandbox = await secureSandbox(exe('my-vm'), {
+  ...exeDefaults(),
+});
+
+const result = await sandbox.exec('echo hello');
+// stop() is a no-op — exe.dev VMs are persistent
+// Destroy externally: ssh exe.dev rm my-vm
+await sandbox.stop();
+```
+
+### `exe(vmName: string)`
+
+Creates a `SandboxAdapter` from an exe.dev VM name. The VM must already exist (created via `ssh exe.dev new`). All commands route through the exe.dev SSH gateway: `ssh exe.dev ssh <vmName> <command>`.
+
+Uses `child_process.execFile` (no local shell) with single-quote escaping for the gateway shell layer. Default timeout: 120s, max buffer: 50MB.
+
+- `exec()` — shell-escapes commands, supports `sudo`, `cwd`, `env`, and `detached` options
+- `writeFile()` — base64-encodes content and pipes through SSH
+- `readFile()` — `cat` via SSH
+- `stop()` — no-op (exe.dev VMs are persistent; destroy externally via `ssh exe.dev rm <vmName>`)
+- `fileExists()` — `test -f` via SSH (enables skipping agentsh download when already installed)
+
+### `exeDefaults()`
+
+Returns exe.dev-optimized `Partial<SecureConfig>` with full enforcement and a standalone high-security `PolicyDefinition`:
+
+- `installStrategy: 'download'` — skips download automatically if agentsh is already installed
+- `allowDegraded: false` — exe.dev has full kernel capabilities; do not degrade
+- **All enforcement layers**: ptrace + seccomp + Landlock + FUSE + cgroups
+- Deny-by-default file rules with explicit workspace allows (`/root`, `/workspace`)
+- Network: localhost + package registries only (no LLM providers, no GitHub)
+- Blocks exe.dev internals: `shelley`, `iptables`, `systemctl`
+- DLP with custom patterns for OpenAI, Anthropic, AWS, GitHub, JWT, Slack tokens
+- Conservative resource limits: 2GB RAM, 50% CPU, 100 PIDs
+- Full audit logging (all operations logged)
+
+Spread into your config and override as needed:
+
+```typescript
+const sandbox = await secureSandbox(exe('my-vm'), {
+  ...exeDefaults(),
+  policy: myPolicy,
 });
 ```
 
