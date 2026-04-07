@@ -1231,14 +1231,14 @@ describe('provider defaults', () => {
       configureFreestyleSpec(spec);
       const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
       const files = filesCall!.args[0];
-      expect(files['/opt/install-agentsh.sh'].content).toContain('agentsh_0.17.0_linux_amd64.tar.gz');
+      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.17.0"');
       expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
       expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
       expect(files['/etc/agentsh/policies/default.yaml'].content).toContain('/home/user');
       expect(files['/etc/environment'].content).toContain('AGENTSH_SERVER=http://127.0.0.1:18080');
     });
 
-    it('creates two systemd services with correct ordering', () => {
+    it('creates two systemd services with correct ordering and hard Requires dependency', () => {
       const spec = mockSpec();
       configureFreestyleSpec(spec);
       const services = spec._calls.filter((c: any) => c.method === 'systemdService').map((c: any) => c.args[0]);
@@ -1248,6 +1248,25 @@ describe('provider defaults', () => {
       expect(services[1].name).toBe('agentsh');
       expect(services[1].mode).toBe('service');
       expect(services[1].after).toEqual(['install-agentsh.service']);
+      expect(services[1].requires).toEqual(['install-agentsh.service']);
+    });
+
+    it('throws on shell-injection agentshVersion', () => {
+      expect(() => configureFreestyleSpec(mockSpec(), { agentshVersion: '0.17.0; rm -rf /' }))
+        .toThrow(/invalid agentshVersion/i);
+    });
+
+    it('throws on empty agentshVersion', () => {
+      expect(() => configureFreestyleSpec(mockSpec(), { agentshVersion: '' }))
+        .toThrow(/invalid agentshVersion/i);
+    });
+
+    it('accepts valid pre-release agentshVersion and substitutes it in the install script', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, { agentshVersion: '1.2.3-rc.1' });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const installScript = filesCall!.args[0]['/opt/install-agentsh.sh'].content;
+      expect(installScript).toContain('AGENTSH_VERSION="1.2.3-rc.1"');
     });
 
     it('respects opts.agentshVersion override', () => {

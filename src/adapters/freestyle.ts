@@ -7,6 +7,8 @@ import { shellEscape, envPrefix } from '../core/shell.js';
 
 const AGENTSH_VERSION = '0.17.0';
 
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
+
 const INSTALL_SCRIPT = [
   '#!/bin/bash',
   'set -eux',
@@ -479,6 +481,10 @@ export function configureFreestyleSpec(
   const configYaml = opts?.configYaml
     ?? generateServerConfig(defaults.serverConfig as ServerConfigOpts);
 
+  if (opts?.agentshVersion !== undefined && !SEMVER_RE.test(opts.agentshVersion)) {
+    throw new Error(`configureFreestyleSpec: invalid agentshVersion ${opts.agentshVersion}; expected semver like "0.17.0"`);
+  }
+
   const installScript = opts?.agentshVersion
     ? INSTALL_SCRIPT.replace(`AGENTSH_VERSION="${AGENTSH_VERSION}"`, `AGENTSH_VERSION="${opts.agentshVersion}"`)
     : INSTALL_SCRIPT;
@@ -512,6 +518,7 @@ export function configureFreestyleSpec(
         AGENTSH_SHIM_FORCE: '1',
       },
       after: ['install-agentsh.service'],
+      requires: ['install-agentsh.service'],
       wantedBy: ['multi-user.target'],
     });
 }
