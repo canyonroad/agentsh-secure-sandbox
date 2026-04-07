@@ -113,7 +113,11 @@ export function freestyle(vm: any): SandboxAdapter {
  * - DLP with custom patterns for OpenAI / Anthropic / AWS / GitHub /
  *   JWT / Slack tokens.
  * - Workspace at /home/user (matches Freestyle VM default home).
- * - Conservative resource limits (2 GB RAM, 50% CPU, 100 PIDs).
+ * - Two-tier resource caps: the outer server sandbox bound is
+ *   4 GB RAM / 100% CPU / 256 procs, while the inner per-policy
+ *   resourceLimits (added in the policy half of this function) are
+ *   2 GB / 50% / 100 PIDs. The outer bound is a safety ceiling; the
+ *   inner limits are what agent sessions actually hit.
  *
  * Spread into your secureSandbox() call:
  *
