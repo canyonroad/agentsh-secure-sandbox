@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), [Modal](https://modal.com), [Runloop](https://runloop.ai), and [exe.dev](https://exe.dev). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), [Modal](https://modal.com), [Runloop](https://runloop.ai), [exe.dev](https://exe.dev), and [Freestyle](https://freestyle.sh). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -110,14 +110,14 @@ Enforcement happens at the **kernel level** — Landlock restricts filesystem ac
 
 Every provider gets the same protections — the enforcement mechanism adapts to what the kernel supports:
 
-| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal | Runloop | exe.dev |
-|------------|--------|-----|---------|------------|--------|---------|-------|---------|---------|
-| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal | Runloop | exe.dev | Freestyle |
+|------------|--------|-----|---------|------------|--------|---------|-------|---------|---------|-----------|
+| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Different platforms use different kernel mechanisms to achieve these protections:
 
@@ -132,12 +132,15 @@ Different platforms use different kernel mechanisms to achieve these protections
 | [**Modal**](https://modal.com) | ptrace (execve + openat + connect + signal) + network proxy | `ptrace` |
 | [**Runloop**](https://runloop.ai) | Landlock + network proxy + shell shim | `full` |
 | [**exe.dev**](https://exe.dev) | ptrace + seccomp + Landlock + FUSE + cgroups + network proxy | `full` |
+| [**Freestyle**](https://freestyle.sh) | seccomp (per-command wrapper) + network proxy + FUSE (deferred) + cgroups | `minimal` |
 
 > **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
 >
 > **Modal:** gVisor doesn't support seccomp user-notify or Landlock. ptrace provides equivalent enforcement by intercepting syscalls via `PTRACE_SEIZE`.
 >
 > **exe.dev:** Full kernel capabilities — all enforcement layers active (ptrace + seccomp + Landlock + FUSE + cgroups). Persistent VMs accessed via SSH; `stop()` is a no-op.
+>
+> **Freestyle:** The Freestyle kernel lacks Yama, so agentsh's seccomp file_monitor is disabled (it conflicts with FUSE without Yama). FUSE runs in deferred mode with `sudo /bin/chmod 666 /dev/fuse` at first session start. Security mode settles into `minimal` — enforcement comes from the per-command seccomp wrapper, the embedded network/DLP proxy, FUSE soft-delete, and cgroups. Bake agentsh into the VM at spec time via `configureFreestyleSpec` for faster cold boots.
 
 ```typescript
 // E2B
@@ -181,6 +184,16 @@ import { exe, exeDefaults } from '@agentsh/secure-sandbox/adapters/exe';
 // VM already created: ssh exe.dev new --name=my-vm --image=ubuntu:22.04
 const sandbox = await secureSandbox(exe('my-vm'), {
   ...exeDefaults(),
+});
+
+// Freestyle (Firecracker VMs with declarative VmSpec — agentsh baked in at snapshot time)
+import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+import { freestyle, freestyleDefaults, configureFreestyleSpec } from '@agentsh/secure-sandbox/adapters/freestyle';
+const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
+const { vm } = await fs.vms.create({ spec: configureFreestyleSpec(new VmSpec().snapshot()) });
+const sandbox = await secureSandbox(freestyle(vm), {
+  ...freestyleDefaults(),
+  installStrategy: 'preinstalled',
 });
 ```
 
