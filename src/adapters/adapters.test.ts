@@ -882,6 +882,32 @@ describe('freestyle adapter', () => {
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe('nope');
   });
+
+  it('detached with cwd wraps the compound in an inner sh -c under nohup', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('ls', [], { cwd: '/home/user/project', detached: true });
+    expect(result.exitCode).toBe(0);
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(command).toContain('nohup sh -c');
+    expect(command).toContain('cd ');
+    expect(command).toContain('/home/user/project');
+    expect(command).toContain('ls');
+  });
+
+  it('detached with env wraps the compound in an inner sh -c under nohup', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('server', ['start'], {
+      env: { FOO: 'bar' },
+      detached: true,
+    });
+    expect(result.exitCode).toBe(0);
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(command).toContain('nohup sh -c');
+    expect(command).toContain('FOO=bar');
+    expect(command).toContain('server start');
+  });
 });
 
 // ─── Provider defaults ──────────────────────────────────────

@@ -67,7 +67,8 @@ export function freestyle(vm: any): SandboxAdapter {
       const command = `sh -c ${shellEscape('', [wrapped])}`;
 
       if (opts?.detached) {
-        run(`sh -c ${shellEscape('', [`nohup ${wrapped} > /dev/null 2>&1 &`])}`).catch(() => {});
+        const detached = `nohup sh -c ${shellEscape('', [wrapped])} > /dev/null 2>&1 &`;
+        run(`sh -c ${shellEscape('', [detached])}`).catch(() => {});
         return { stdout: '', stderr: '', exitCode: 0 };
       }
 
