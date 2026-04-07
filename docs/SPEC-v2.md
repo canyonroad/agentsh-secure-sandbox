@@ -36,7 +36,7 @@ commands, which network destinations, with what verdicts).
 
 ### 1.2 Prerequisites
 
-This library requires **agentsh v0.16.2+** with support for:
+This library requires **agentsh v0.17.0+** with support for:
 
 - **Multi-layer policy evaluation** (`system_dir` config option) for the
   self-protection guarantee (see Section 9.4).
@@ -46,7 +46,7 @@ This library requires **agentsh v0.16.2+** with support for:
 - **Security modes** (`full`, `ptrace`, `landlock`, `landlock-only`, `minimal`) with
   auto-detection via `agentsh detect`.
 - **ptrace-based enforcement** — syscall interception via `PTRACE_SEIZE` for
-  gVisor platforms where seccomp user-notify is unavailable (v0.16.2).
+  gVisor platforms where seccomp user-notify is unavailable.
 - **Path canonicalization** — resolves symlinks before policy evaluation,
   preventing `/proc/self/root` and symlink-based bypass attacks.
 - **Transparent command unwrapping** — peels wrapper commands (`env`, `sudo`,
@@ -162,7 +162,7 @@ It does not bundle the binary in the npm package.
 | Setting               | Default                                                       | Override                      |
 | --------------------- | ------------------------------------------------------------- | ----------------------------- |
 | Binary source         | `github.com/canyonroad/agentsh/releases/download/{version}/`  | `AGENTSH_BINARY_URL` env var  |
-| Version               | Pinned per library release (currently `0.16.2`)               | `agentshVersion` in config    |
+| Version               | Pinned per library release (currently `0.17.0`)               | `agentshVersion` in config    |
 | Platform detection    | `uname -m` inside sandbox → `linux_amd64` or `linux_arm64`   | `agentshArch` in config       |
 | Checksum verification | SHA256, pinned per version in library source                  | `agentshChecksum` in config   |
 
@@ -181,11 +181,11 @@ the library throws `IntegrityError` with the message:
 "No pinned checksum for agentsh vX.Y.Z. Provide `agentshChecksum`
 explicitly or use `skipIntegrityCheck: true`."
 
-Checksums for v0.16.2 (from GitHub release assets):
+Checksums for v0.17.0 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: 7ff357066a61694626d4c19afa92fdf368318bced9be90391cc2f3808976f995
-linux_arm64.tar.gz: a48b3e4a60804cca98326619a68409e8ee83556d69ee2cf5d574e4361e0c19c6
+linux_amd64.tar.gz: f8b710e29a45e104b93dd922540bd877762d1c68005a62c871216055b6db82b4
+linux_arm64.tar.gz: 4de3338f5d060d289dfbbf77c9172a573f4c06ca6f725fa619e408d75b17bd73
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum

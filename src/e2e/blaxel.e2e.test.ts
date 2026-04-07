@@ -5,7 +5,7 @@ import { blaxel } from '../adapters/blaxel.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { agentDefault } from '../policies/presets.js';
 import { generateServerConfig } from '../core/config.js';
-import { CHECKSUMS } from '../core/integrity.js';
+import { CHECKSUMS, PINNED_VERSION } from '../core/integrity.js';
 import type { SecuredSandbox } from '../core/types.js';
 
 // @blaxel/core requires API credentials and network access.
@@ -42,8 +42,10 @@ describe.skipIf(!canRun)('Blaxel E2E', () => {
     // Install deps for Alpine (glibc compat, libseccomp, curl, bash)
     await rawExec('apk add --no-cache gcompat curl bash libseccomp');
 
-    // Download and install agentsh
-    const version = '0.16.2';
+    // Download and install agentsh. Use PINNED_VERSION so this test tracks
+    // whatever the library currently ships with — no drift between the e2e
+    // setup and the rest of the project.
+    const version = PINNED_VERSION;
     const expectedChecksum = CHECKSUMS[version]?.linux_amd64;
     const url = `https://github.com/canyonroad/agentsh/releases/download/v${version}/agentsh_${version}_linux_amd64.tar.gz`;
     await rawExec(`wget -q ${url} -O /tmp/agentsh.tar.gz`);

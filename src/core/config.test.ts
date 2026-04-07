@@ -285,7 +285,8 @@ describe('generateServerConfig — extended fields', () => {
     });
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.seccomp.enabled).toBe(true);
-    expect(parsed.sandbox.seccomp.execve).toBe(true);
+    // agentsh v0.17.0+: seccomp.execve is an ExecveConfig struct, not a bool
+    expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true });
     expect(parsed.sandbox.seccomp.file_monitor).toEqual({ enabled: true, enforce_without_fuse: false });
   });
 

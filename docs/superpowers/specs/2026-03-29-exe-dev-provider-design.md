@@ -176,3 +176,45 @@ Unit tests mock the SSH layer (child_process.exec) to verify:
 - stderr noise filtering (landlock/ptrace/agentsh prefixes stripped)
 - stop() is a no-op
 - fileExists() returns boolean from `test -f`
+
+---
+
+## Addendum — 2026-04-07 (agentsh v0.17.0 upgrade)
+
+Three issues surfaced during the v0.17.0 bump and were fixed at the adapter / runner / serializer layers. The original design above is preserved as historical intent; current behavior differs where noted.
+
+### 1. PTY forcing on the inner SSH hop
+
+**Symptom.** Exit codes came back as 0 even on failure; stderr was merged into stdout; `\r` characters appeared in captured output.
+
+**Root cause.** The exe.dev gateway always allocates a PTY for the inner `ssh <vmName> ...` hop, regardless of `-T` / `-o RequestTTY=no` on the outer hop (both are rejected: the gateway parses its first argument as a VM name, so `ssh -T vm` becomes "VM '-T' not found"). With a PTY on the inner hop, stderr and stdout are merged onto the same tty, and exit codes are lost unless surfaced in-band.
+
+**Fix (`src/adapters/exe.ts`).** Every command is now wrapped in a base64 marker-protocol script built by `buildWrapper()`. The user command is base64-encoded into `__CMD__`, decoded inside the wrapper, eval'd in a subshell so its exit code can be captured via `$?`, and stdout/stderr are redirected to temp files. The wrapper then prints three sentinel markers — `__AGENTSH_EXE_OUT__<b64>`, `__AGENTSH_EXE_ERR__<b64>`, `__AGENTSH_EXE_EXIT__=<code>` — which `parseWrappedOutput()` extracts and decodes. The entire round-trip survives PTY mangling because only printable ASCII crosses the terminal.
+
+**Why subshell, not command group.** An earlier prototype used `{ eval ...; }` but command groups run in the current shell, so `exit 42` from user code killed the wrapper before the markers could print. Switching to `( eval ...; )` runs the user command in a subshell and preserves the exit code in `$?` for the parent wrapper to capture.
+
+**Fallback.** If the wrapper never runs (SSH/network error), `parseWrappedOutput()` returns null and the adapter surfaces the raw gateway output plus a non-zero exit code so callers notice the failure instead of silently parsing garbage.
+
+### 2. `opts.sudo` is now elided unconditionally
+
+**Symptom.** `provision.ts` calls `adapter.exec('install', ..., { sudo: true })` for the binary install step. On exe.dev this failed with `bash: line 1: sudo: command not found`.
+
+**Root cause.** exe.dev VMs always SSH in as root, AND the default `ubuntu:22.04` image ships with no `sudo` binary at all. The `{ sudo: true }` hint is both redundant (we already have the privileges) and actively broken (there's nothing to call).
+
+**Fix.** The adapter's `exec()` drops the sudo prefix unconditionally. A unit test (`drops sudo prefix because exe.dev VMs are always root`) guards against regression.
+
+### 3. curl pre-install in the e2e runner
+
+**Symptom.** Agentsh provisioning failed at the `download` phase because neither `curl` nor `wget` was available.
+
+**Root cause.** Default `ubuntu:22.04` on exe.dev has no HTTP client, so `installStrategy: 'download'` had nothing to fetch the tarball with.
+
+**Fix (`src/e2e/exe-e2e-runner.ts`).** `ensureCurlInstalled(vmName)` runs `apt-get update && apt-get install -y curl ca-certificates` after `waitForSSH`. The install is idempotent, so it's safe on both fresh and reused VMs. Users who run the adapter outside the e2e runner must install curl themselves, or use a pre-baked image, or switch to `installStrategy: 'preinstalled'`.
+
+### 4. `seccomp.execve` schema change (not exe.dev-specific, but observed here first)
+
+**Symptom.** Agentsh server failed to parse `/etc/agentsh/config.yml`: `line 33: cannot unmarshal !!bool false into config.ExecveConfig`.
+
+**Root cause.** agentsh v0.17.0 turned `seccomp.execve` from a bare bool into an `ExecveConfig` struct. Adapters that set `seccompDetails.execve` (exe.dev, sprites) emitted the old bare-bool form and could no longer start the server. `ptrace.trace.execve` is unaffected — it's still a bool.
+
+**Fix (`src/core/config.ts`).** `generateServerConfig` now wraps `seccompDetails.execve` as `{ enabled: bool }` at serialization time. The `ServerConfigOpts` caller API is unchanged — still `execve?: boolean` — so no adapter call sites had to move.

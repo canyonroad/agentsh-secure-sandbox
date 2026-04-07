@@ -42,6 +42,78 @@ function filterNoise(text: string): string {
     .join('\n');
 }
 
+// ── exec.dev gateway wrapper ──────────────────────────────────
+//
+// The exe.dev SSH gateway forces a PTY on the inner ssh hop.  A PTY:
+//   • masks the inner command's exit code (always reports 0)
+//   • merges stderr into stdout
+//   • inserts CR characters into the byte stream
+//
+// The gateway also rejects SSH options like `-T` / `-o RequestTTY=no`,
+// so we can't disable the PTY.  Instead we wrap every user command in a
+// shell snippet that:
+//   1. base64-decodes the user command (so quoting/binary survive both
+//      ssh hops cleanly)
+//   2. runs it in a subshell with stdout/stderr redirected to temp files
+//   3. emits markers + base64 of each stream + the captured exit code
+//
+// On the host side, parseWrappedOutput() locates the markers in the raw
+// SSH output (any PTY noise lands outside the markers and is ignored)
+// and decodes the payloads.  This restores faithful exit codes, exact
+// stdout/stderr separation, and binary-safe content.
+
+const MARKER_OUT = '__AGENTSH_EXE_OUT__';
+const MARKER_ERR = '__AGENTSH_EXE_ERR__';
+const MARKER_EXIT = '__AGENTSH_EXE_EXIT__=';
+
+function buildWrapper(userCommand: string): string {
+  const cmdB64 = Buffer.from(userCommand, 'utf-8').toString('base64');
+  // Built using only double quotes so the entire wrapper can be safely
+  // wrapped in single quotes for the gateway shell layer.  cmdB64 is
+  // base64 ([A-Za-z0-9+/=]) so it never contains shell-special chars.
+  return [
+    `__CMD__="${cmdB64}"`,
+    `__SCRIPT__=$(printf "%s" "$__CMD__" | base64 -d)`,
+    `( eval "$__SCRIPT__" ) > /tmp/agentsh-ssh-out.$$ 2> /tmp/agentsh-ssh-err.$$`,
+    `__X__=$?`,
+    `printf "${MARKER_OUT}"`,
+    `base64 -w0 /tmp/agentsh-ssh-out.$$`,
+    `printf "${MARKER_ERR}"`,
+    `base64 -w0 /tmp/agentsh-ssh-err.$$`,
+    `printf "${MARKER_EXIT}%s\\n" "$__X__"`,
+    `rm -f /tmp/agentsh-ssh-out.$$ /tmp/agentsh-ssh-err.$$`,
+  ].join('; ');
+}
+
+function parseWrappedOutput(
+  raw: string,
+): { stdout: string; stderr: string; exitCode: number } | null {
+  const outIdx = raw.indexOf(MARKER_OUT);
+  const errIdx = raw.indexOf(MARKER_ERR);
+  const exitIdx = raw.indexOf(MARKER_EXIT);
+  if (
+    outIdx < 0 ||
+    errIdx < 0 ||
+    exitIdx < 0 ||
+    outIdx >= errIdx ||
+    errIdx >= exitIdx
+  ) {
+    return null;
+  }
+  // base64 charset is [A-Za-z0-9+/=] — no whitespace — so any CR/LF inserted
+  // by the gateway PTY between segments is harmless to strip.
+  const cleanB64 = (s: string) => s.replace(/[\r\n\s]/g, '');
+  const outB64 = cleanB64(raw.slice(outIdx + MARKER_OUT.length, errIdx));
+  const errB64 = cleanB64(raw.slice(errIdx + MARKER_ERR.length, exitIdx));
+  const exitMatch = raw.slice(exitIdx + MARKER_EXIT.length).match(/^(\d+)/);
+  if (!exitMatch) return null;
+  return {
+    stdout: Buffer.from(outB64, 'base64').toString('utf-8'),
+    stderr: Buffer.from(errB64, 'base64').toString('utf-8'),
+    exitCode: parseInt(exitMatch[1], 10),
+  };
+}
+
 /**
  * Wraps an exe.dev VM into a SandboxAdapter.
  *
@@ -70,36 +142,58 @@ export function exe(vmName: string): SandboxAdapter {
   /**
    * Execute a command on the VM via the exe.dev SSH gateway.
    *
-   * Uses execFile (no local shell) with the command single-quoted
-   * to survive the gateway shell layer.  Default timeout: 120s.
+   * The gateway forces a PTY on the inner ssh hop, so commands are wrapped
+   * with buildWrapper() to recover faithful exit codes and clean stdout /
+   * stderr separation. Default timeout: 120s.
    */
   async function ssh(cmd: string, timeout = 120_000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    // Single-quote escape for the gateway shell layer
-    const escaped = cmd.replace(/'/g, "'\\''");
-    const args = [...SSH_OPTS, 'exe.dev', `ssh ${vmName} '${escaped}'`];
+    const wrapper = buildWrapper(cmd);
+    // wrapper is built with no single quotes, so wrapping the entire script
+    // in single quotes for the gateway shell is safe without escaping.
+    const args = [...SSH_OPTS, 'exe.dev', `ssh ${vmName} '${wrapper}'`];
+    let raw: { stdout: string; stderr: string };
+    let outerExit = 0;
     try {
-      const { stdout, stderr } = await execFileAsync('ssh', args, {
+      raw = await execFileAsync('ssh', args, {
         timeout,
         maxBuffer: 50 * 1024 * 1024,
       });
-      return {
-        stdout: stdout ?? '',
-        stderr: filterNoise(stderr ?? ''),
-        exitCode: 0,
-      };
     } catch (err: any) {
-      // execFile rejects on non-zero exit or system error
-      return {
+      raw = {
         stdout: err.stdout ?? '',
-        stderr: filterNoise(err.stderr ?? err.message ?? ''),
-        exitCode: typeof err.code === 'number' ? err.code : 1,
+        stderr: err.stderr ?? err.message ?? '',
+      };
+      outerExit = typeof err.code === 'number' ? err.code : 1;
+    }
+    const parsed = parseWrappedOutput(raw.stdout);
+    if (parsed) {
+      // Wrapper produced markers — trust its exit code and the captured
+      // streams, but still strip agentsh noise lines that the user command
+      // (e.g. `agentsh detect`) emits to stderr alongside structured output.
+      return {
+        stdout: parsed.stdout,
+        stderr: filterNoise(parsed.stderr),
+        exitCode: parsed.exitCode,
       };
     }
+    // No markers found — gateway/network/SSH error before the wrapper ran.
+    // Surface raw output (with noise filtered) and a non-zero exit so callers
+    // notice the failure rather than silently parsing garbage.
+    return {
+      stdout: raw.stdout,
+      stderr: filterNoise(raw.stderr),
+      exitCode: outerExit !== 0 ? outerExit : 1,
+    };
   }
 
   return {
     async exec(cmd, args, opts) {
-      const command = `${envPrefix(opts?.env)}${opts?.sudo ? 'sudo ' : ''}${shellEscape(cmd, args)}`;
+      // exe.dev VMs always SSH in as root, so opts.sudo is redundant — and
+      // worse, the default ubuntu:22.04 image has no sudo binary at all, so
+      // prepending it would break callers like provision.ts that pass
+      // { sudo: true } as an "elevate if needed" hint. Drop the sudo prefix
+      // unconditionally; we already have the privileges it would request.
+      const command = `${envPrefix(opts?.env)}${shellEscape(cmd, args)}`;
 
       if (opts?.detached) {
         ssh(`nohup ${command} > /dev/null 2>&1 &`).catch(() => {});

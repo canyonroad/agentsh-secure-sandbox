@@ -105,6 +105,22 @@ function waitForSSH(vmName: string, maxAttempts = 30): void {
   throw new Error(`SSH not reachable after ${maxAttempts} attempts`);
 }
 
+/**
+ * Ensure curl is available on the VM. The default exe.dev ubuntu:22.04 image
+ * ships with neither curl nor wget, which means agentsh's `download` install
+ * strategy has nothing to fetch the tarball with. apt-get install is
+ * idempotent — already-installed runs are fast no-ops, so this is safe to
+ * call on both fresh and reused VMs.
+ */
+function ensureCurlInstalled(vmName: string): void {
+  const installCmd = 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates';
+  execFileSync('ssh', [...SSH_OPTS, 'exe.dev', `ssh ${vmName} '${installCmd}'`], {
+    encoding: 'utf-8',
+    timeout: 180_000,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 // ── Environment check ─────────────────────────────────────────
 
 // Verify SSH access to exe.dev
@@ -131,6 +147,8 @@ if (reused) {
   console.log(`  \u2192 waiting for SSH...`);
   waitForSSH(VM_NAME);
 }
+console.log(`  \u2192 ensuring curl is installed...`);
+ensureCurlInstalled(VM_NAME);
 console.log(`  \u2192 VM ready: ${VM_NAME}`);
 
 // ── Adapter tests ────────────────────────────────────────────
@@ -230,8 +248,16 @@ await test('secureSandbox provisions with exeDefaults', async () => {
     });
   } catch (err: any) {
     // Print diagnostic info on failure
+    console.log(`    error: ${err.name}: ${err.message}`);
+    if (err.phase) console.log(`    phase: ${err.phase}`);
+    if (err.command) console.log(`    command: ${err.command}`);
+    if (err.stderr) console.log(`    stderr: ${err.stderr.slice(0, 800)}`);
     const agentshVer = await adapter.exec('agentsh', ['--version']);
     console.log(`    agentsh: ${agentshVer.stdout.trim() || agentshVer.stderr.trim()}`);
+    const tarball = await adapter.exec('ls', ['-la', '/tmp/agentsh.tar.gz']);
+    console.log(`    tarball: ${tarball.stdout.trim() || tarball.stderr.trim()}`);
+    const tmpAgentsh = await adapter.exec('ls', ['-la', '/tmp/agentsh', '/tmp/agentsh-shell-shim', '/tmp/agentsh-unixwrap']);
+    console.log(`    /tmp bins: ${tmpAgentsh.stdout.trim() || tmpAgentsh.stderr.trim()}`);
     const serverLog = await adapter.exec('tail', ['-20', '/var/log/agentsh/server.log']);
     console.log(`    server log: ${serverLog.stdout.trim().slice(0, 500)}`);
     throw err;

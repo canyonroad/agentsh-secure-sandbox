@@ -229,7 +229,13 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   if (opts.seccompDetails) {
     const sec = (config.sandbox as any).seccomp;
     if (!opts.ptrace?.enabled) sec.enabled = true;
-    if (opts.seccompDetails.execve !== undefined) sec.execve = opts.seccompDetails.execve;
+    // agentsh v0.17.0 changed seccomp.execve from a bare bool into an
+    // ExecveConfig struct (with `enabled` plus argv-capture sub-fields).
+    // Wrap the bool we accept from callers into the struct shape; we only
+    // need `enabled` since the other fields default to zero values.
+    if (opts.seccompDetails.execve !== undefined) {
+      sec.execve = { enabled: opts.seccompDetails.execve };
+    }
     if (opts.seccompDetails.fileMonitor) {
       sec.file_monitor = {
         ...(opts.seccompDetails.fileMonitor.enabled !== undefined && { enabled: opts.seccompDetails.fileMonitor.enabled }),

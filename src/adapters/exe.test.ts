@@ -7,6 +7,30 @@ import { serializePolicy } from '../policies/serialize.js';
 const mockExecFile = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ execFile: mockExecFile }));
 
+// ── Wire-format helpers ───────────────────────────────────────
+//
+// The exe adapter wraps every command in a marker-protocol script that
+// base64-encodes both the input command and the captured stdout/stderr/exit.
+// These helpers reproduce that wire format for unit testing.
+
+const MARKER_OUT = '__AGENTSH_EXE_OUT__';
+const MARKER_ERR = '__AGENTSH_EXE_ERR__';
+const MARKER_EXIT = '__AGENTSH_EXE_EXIT__=';
+
+/** Build the wire-format marker string the adapter expects from the SSH gateway. */
+function buildMarkerOutput(stdout: string, stderr: string, exitCode: number): string {
+  const outB64 = Buffer.from(stdout, 'utf-8').toString('base64');
+  const errB64 = Buffer.from(stderr, 'utf-8').toString('base64');
+  return `${MARKER_OUT}${outB64}${MARKER_ERR}${errB64}${MARKER_EXIT}${exitCode}\n`;
+}
+
+/** Extract and decode the user command from a wrapped SSH arg. */
+function extractInnerCommand(sshLastArg: string): string {
+  const m = sshLastArg.match(/__CMD__="([A-Za-z0-9+/=]+)"/);
+  if (!m) throw new Error(`no __CMD__ in arg: ${sshLastArg.slice(0, 200)}`);
+  return Buffer.from(m[1], 'base64').toString('utf-8');
+}
+
 describe('exe adapter', () => {
   let exe: typeof import('./exe.js').exe;
   beforeEach(async () => {
@@ -15,19 +39,36 @@ describe('exe adapter', () => {
     exe = mod.exe;
   });
 
+  /**
+   * Mock the SSH gateway response: format stdout/stderr/exitCode as the
+   * marker protocol the adapter expects, then return it via execFile.
+   * The SSH process itself always exits 0 when the wrapper ran successfully —
+   * the inner exit code lives inside the marker payload.
+   */
   function setupMock(stdout = '', stderr = '', exitCode = 0) {
+    const wireOutput = buildMarkerOutput(stdout, stderr, exitCode);
     mockExecFile.mockImplementation(
       (_cmd: string, _args: string[], _opts: any, cb?: Function) => {
         const callback = typeof _opts === 'function' ? _opts : cb;
-        if (exitCode !== 0) {
-          const err: any = new Error(`exit ${exitCode}`);
-          err.code = exitCode;
-          err.stdout = stdout;
-          err.stderr = stderr;
-          process.nextTick(() => callback?.(err, stdout, stderr));
-        } else {
-          process.nextTick(() => callback?.(null, stdout, stderr));
-        }
+        process.nextTick(() => callback?.(null, wireOutput, ''));
+        return {} as any;
+      },
+    );
+  }
+
+  /**
+   * Mock an SSH-level failure (gateway/network/timeout) where the wrapper
+   * never runs, so no markers appear in the output.
+   */
+  function setupSshFailure(stderr = 'ssh: connection refused', code = 255) {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: any, cb?: Function) => {
+        const callback = typeof _opts === 'function' ? _opts : cb;
+        const err: any = new Error(`exit ${code}`);
+        err.code = code;
+        err.stdout = '';
+        err.stderr = stderr;
+        process.nextTick(() => callback?.(err, '', stderr));
         return {} as any;
       },
     );
@@ -47,22 +88,26 @@ describe('exe adapter', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('single-quotes command for gateway shell', async () => {
+  it('wraps gateway command in single quotes around the marker script', async () => {
     setupMock('');
     const adapter = exe('test-vm');
     await adapter.exec('echo', ['hello world']);
     const args = mockExecFile.mock.calls[0][1] as string[];
     const lastArg = args[args.length - 1];
     expect(lastArg).toMatch(/^ssh test-vm '.*'$/);
+    expect(lastArg).toContain('__CMD__=');
   });
 
-  it('prepends sudo when opts.sudo is true', async () => {
+  it('drops sudo prefix because exe.dev VMs are always root', async () => {
     setupMock('');
     const adapter = exe('my-vm');
     await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
     const args = mockExecFile.mock.calls[0][1] as string[];
-    const lastArg = args[args.length - 1];
-    expect(lastArg).toContain('sudo chmod');
+    const inner = extractInnerCommand(args[args.length - 1]);
+    // The default exe.dev ubuntu:22.04 image has no sudo binary, and we're
+    // already root — so opts.sudo must be elided, not honored.
+    expect(inner).not.toContain('sudo');
+    expect(inner).toContain('chmod');
   });
 
   it('wraps cwd with cd command', async () => {
@@ -70,8 +115,8 @@ describe('exe adapter', () => {
     const adapter = exe('my-vm');
     await adapter.exec('ls', [], { cwd: '/workspace' });
     const args = mockExecFile.mock.calls[0][1] as string[];
-    const lastArg = args[args.length - 1];
-    expect(lastArg).toContain("cd '\\''/workspace'\\''");
+    const inner = extractInnerCommand(args[args.length - 1]);
+    expect(inner).toContain("cd '/workspace'");
   });
 
   it('detached returns immediately with exitCode 0', async () => {
@@ -87,8 +132,8 @@ describe('exe adapter', () => {
     const adapter = exe('my-vm');
     await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
     const args = mockExecFile.mock.calls[0][1] as string[];
-    const lastArg = args[args.length - 1];
-    expect(lastArg).toContain('TRACEPARENT=');
+    const inner = extractInnerCommand(args[args.length - 1]);
+    expect(inner).toContain('TRACEPARENT=');
   });
 
   it('writeFile uses base64 approach', async () => {
@@ -96,8 +141,10 @@ describe('exe adapter', () => {
     const adapter = exe('my-vm');
     await adapter.writeFile('/workspace/test.txt', 'hello');
     const args = mockExecFile.mock.calls[0][1] as string[];
-    const lastArg = args[args.length - 1];
-    expect(lastArg).toContain('base64');
+    const inner = extractInnerCommand(args[args.length - 1]);
+    expect(inner).toContain('base64 -d');
+    // 'hello' base64-encoded is 'aGVsbG8='
+    expect(inner).toContain('aGVsbG8=');
   });
 
   it('readFile uses cat', async () => {
@@ -105,8 +152,8 @@ describe('exe adapter', () => {
     const adapter = exe('my-vm');
     const content = await adapter.readFile('/workspace/test.txt');
     const args = mockExecFile.mock.calls[0][1] as string[];
-    const lastArg = args[args.length - 1];
-    expect(lastArg).toContain('cat');
+    const inner = extractInnerCommand(args[args.length - 1]);
+    expect(inner).toContain('cat');
     expect(content).toBe('file content');
   });
 
@@ -128,6 +175,14 @@ describe('exe adapter', () => {
     const result = await adapter.exec('nonexistent', []);
     expect(result.exitCode).toBe(127);
     expect(result.stderr).toBe('command not found');
+  });
+
+  it('exec surfaces SSH-level failures with non-zero exit', async () => {
+    setupSshFailure('ssh: Could not resolve hostname', 255);
+    const adapter = exe('my-vm');
+    const result = await adapter.exec('echo', ['hi']);
+    expect(result.exitCode).toBe(255);
+    expect(result.stderr).toContain('Could not resolve hostname');
   });
 
   it('stop is a no-op', async () => {
@@ -154,6 +209,35 @@ describe('exe adapter', () => {
     const result = await adapter.exec('echo', ['ok']);
     expect(result.stderr).toBe('actual error');
     expect(result.stderr).not.toContain('landlock');
+  });
+
+  it('preserves stdout content with embedded special characters', async () => {
+    const content = 'line1\nline2\ttab\n"quotes" & <brackets>';
+    setupMock(content);
+    const adapter = exe('my-vm');
+    const result = await adapter.exec('cat', ['/tmp/x']);
+    expect(result.stdout).toBe(content);
+  });
+
+  it('survives single quotes in the user command', async () => {
+    setupMock("it's working\n");
+    const adapter = exe('my-vm');
+    const result = await adapter.exec('sh', ['-c', "echo \"it's working\""]);
+    const args = mockExecFile.mock.calls[0][1] as string[];
+    const lastArg = args[args.length - 1];
+    // The wrapped command must be safe for the gateway shell — only one set
+    // of single quotes around the wrapper, with no inner single quotes.
+    const wrapped = lastArg.match(/^ssh my-vm '(.*)'$/s)?.[1];
+    expect(wrapped).toBeDefined();
+    expect(wrapped).not.toContain("'");
+    // And the inner command, once decoded, must round-trip the user's intent.
+    // The single quote inside the arg gets shell-escaped as '\'' (close-quote,
+    // escaped quote, re-open), which is what the inner shell will eval back to
+    // a literal `'`. Round-tripping means the final shell executes the right
+    // thing — not that the encoded string is byte-identical to the input.
+    const inner = extractInnerCommand(lastArg);
+    expect(inner).toContain("echo \"it'\\''s working\"");
+    expect(result.stdout).toBe("it's working\n");
   });
 });
 
