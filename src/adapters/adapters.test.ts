@@ -7,7 +7,7 @@ import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
 import { modal } from './modal.js';
 import { runloop } from './runloop.js';
-import { freestyle } from './freestyle.js';
+import { freestyle, configureFreestyleSpec } from './freestyle.js';
 import { vercelDefaults } from './vercel.js';
 import { e2bDefaults } from './e2b.js';
 import { daytonaDefaults } from './daytona.js';
@@ -1202,6 +1202,73 @@ describe('provider defaults', () => {
     expect(defaults.serverConfig.fuse.deferred).toBe(true);
     expect(defaults.serverConfig.fuse.deferredEnableCommand).toEqual(['sudo', '/bin/chmod', '666', '/dev/fuse']);
     expect(defaults.workspace).toBe('/home/user');
+  });
+
+  describe('configureFreestyleSpec', () => {
+    function mockSpec() {
+      const calls: { method: string; args: any[] }[] = [];
+      const spec: any = {
+        aptDeps: vi.fn((...deps: string[]) => { calls.push({ method: 'aptDeps', args: deps }); return spec; }),
+        additionalFiles: vi.fn((files: any) => { calls.push({ method: 'additionalFiles', args: [files] }); return spec; }),
+        systemdService: vi.fn((service: any) => { calls.push({ method: 'systemdService', args: [service] }); return spec; }),
+        _calls: calls,
+      };
+      return spec;
+    }
+
+    it('chains builder methods on the spec', () => {
+      const spec = mockSpec();
+      const result = configureFreestyleSpec(spec);
+      expect(result).toBe(spec);
+      expect(spec.aptDeps).toHaveBeenCalledWith(
+        'ca-certificates', 'curl', 'jq', 'libseccomp2', 'sudo',
+        'fuse3', 'python3', 'file', 'sqlite3',
+      );
+    });
+
+    it('adds install + startup scripts and serialized config/policy files', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec);
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const files = filesCall!.args[0];
+      expect(files['/opt/install-agentsh.sh'].content).toContain('agentsh_0.17.0_linux_amd64.tar.gz');
+      expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
+      expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
+      expect(files['/etc/agentsh/policies/default.yaml'].content).toContain('/home/user');
+      expect(files['/etc/environment'].content).toContain('AGENTSH_SERVER=http://127.0.0.1:18080');
+    });
+
+    it('creates two systemd services with correct ordering', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec);
+      const services = spec._calls.filter((c: any) => c.method === 'systemdService').map((c: any) => c.args[0]);
+      expect(services).toHaveLength(2);
+      expect(services[0].name).toBe('install-agentsh');
+      expect(services[0].mode).toBe('oneshot');
+      expect(services[1].name).toBe('agentsh');
+      expect(services[1].mode).toBe('service');
+      expect(services[1].after).toEqual(['install-agentsh.service']);
+    });
+
+    it('respects opts.agentshVersion override', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, { agentshVersion: '0.99.0' });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const installScript = filesCall!.args[0]['/opt/install-agentsh.sh'].content;
+      expect(installScript).toContain('AGENTSH_VERSION="0.99.0"');
+    });
+
+    it('respects opts.policyYaml and opts.configYaml overrides', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, {
+        policyYaml: '# custom policy\n',
+        configYaml: '# custom config\n',
+      });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const files = filesCall!.args[0];
+      expect(files['/etc/agentsh/policies/default.yaml'].content).toBe('# custom policy\n');
+      expect(files['/etc/agentsh/config.yml'].content).toBe('# custom config\n');
+    });
   });
 
   it('runloopDefaults has soft-delete for workspace', () => {

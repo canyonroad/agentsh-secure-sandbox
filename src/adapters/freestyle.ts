@@ -1,9 +1,59 @@
 import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
+import { generateServerConfig } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
+import { serializePolicy } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 
 const AGENTSH_VERSION = '0.17.0';
+
+const INSTALL_SCRIPT = [
+  '#!/bin/bash',
+  'set -eux',
+  `AGENTSH_VERSION="${AGENTSH_VERSION}"`,
+  'URL="https://github.com/canyonroad/agentsh/releases/download/v${AGENTSH_VERSION}/agentsh_${AGENTSH_VERSION}_linux_amd64.tar.gz"',
+  'curl -fsSL "${URL}" -o /tmp/agentsh.tar.gz',
+  'tar xz -C /tmp/ -f /tmp/agentsh.tar.gz',
+  'install -m 0755 /tmp/agentsh /usr/local/bin/agentsh',
+  'install -m 0755 /tmp/agentsh-shell-shim /usr/bin/agentsh-shell-shim',
+  'install -m 0755 /tmp/agentsh-unixwrap /usr/local/bin/agentsh-unixwrap',
+  'rm -f /tmp/agentsh.tar.gz /tmp/agentsh /tmp/agentsh-shell-shim /tmp/agentsh-unixwrap',
+  'mkdir -p /etc/agentsh/policies /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh /home/user',
+  'chmod 755 /etc/agentsh /etc/agentsh/policies /var/lib/agentsh /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh',
+  'echo "root ALL=(ALL) NOPASSWD: /usr/local/bin/agentsh" >> /etc/sudoers',
+  'echo "root ALL=(ALL) NOPASSWD: /bin/chmod 666 /dev/fuse" >> /etc/sudoers',
+  'echo "root ALL=(ALL) NOPASSWD: /bin/chmod 600 /dev/fuse" >> /etc/sudoers',
+  'echo "root ALL=(ALL) NOPASSWD: /bin/mknod /dev/fuse c 10 229" >> /etc/sudoers',
+  'echo "user_allow_other" >> /etc/fuse.conf',
+  '/usr/local/bin/agentsh --version',
+].join('\n');
+
+const STARTUP_SCRIPT = [
+  '#!/bin/bash',
+  '# Restrict /dev/fuse to prevent any FUSE mount during snapshot',
+  'sudo /bin/chmod 600 /dev/fuse 2>/dev/null || true',
+  '',
+  '# Start agentsh server in background (deferred FUSE: mounts on first exec)',
+  '/usr/local/bin/agentsh server >> /var/log/agentsh/server.log 2>&1 &',
+  'SERVER_PID=$!',
+  '',
+  '# Wait for server to be ready (health check loop)',
+  'for i in $(seq 1 15); do',
+  '  if curl -sf http://127.0.0.1:18080/health >/dev/null 2>&1; then break; fi',
+  '  sleep 1',
+  'done',
+  '',
+  '# Install shell shim (replaces /bin/bash with agentsh shim)',
+  'sudo /usr/local/bin/agentsh shim install-shell --root / --shim /usr/bin/agentsh-shell-shim --bash --i-understand-this-modifies-the-host',
+  '',
+  '# Warm up the shim',
+  '/bin/bash -c "echo shim warmup ok" 2>/dev/null || true',
+  '',
+  'echo "agentsh ready"',
+  '',
+  '# Keep the script alive so systemd does not kill the service cgroup',
+  'wait $SERVER_PID',
+].join('\n');
 
 /**
  * Wraps a Freestyle VM into a SandboxAdapter.
@@ -392,6 +442,76 @@ export function freestyleDefaults(): Partial<SecureConfig> {
   };
 }
 
-export function configureFreestyleSpec(_spec: any, _opts?: { agentshVersion?: string; policyYaml?: string; configYaml?: string }): any {
-  throw new Error('configureFreestyleSpec: not implemented');
+/**
+ * Bake agentsh into a Freestyle VmSpec via two systemd services: an
+ * oneshot installer and the agentsh server. Call this on a fresh VmSpec
+ * (usually `new VmSpec().snapshot()`) before passing it to `fs.vms.create`.
+ *
+ * The spec defaults the policy + server config to `freestyleDefaults()`.
+ * Override either via `opts.policyYaml` or `opts.configYaml` with a
+ * pre-serialized YAML string (use `serializePolicy` and
+ * `generateServerConfig` from the library's internals).
+ *
+ * `spec` is typed `any` so callers can import `VmSpec` from
+ * `freestyle-sandboxes` without making it a hard dependency.
+ *
+ * @example
+ * ```ts
+ * import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+ * import { configureFreestyleSpec, freestyle, freestyleDefaults } from '@agentsh/secure-sandbox/adapters/freestyle';
+ *
+ * const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
+ * const spec = configureFreestyleSpec(new VmSpec().snapshot());
+ * const { vm } = await fs.vms.create({ spec });
+ * const sandbox = await secureSandbox(freestyle(vm), {
+ *   ...freestyleDefaults(),
+ *   installStrategy: 'preinstalled',
+ * });
+ * ```
+ */
+export function configureFreestyleSpec(
+  spec: any,
+  opts?: { agentshVersion?: string; policyYaml?: string; configYaml?: string },
+): any {
+  const defaults = freestyleDefaults();
+  const policyYaml = opts?.policyYaml
+    ?? serializePolicy(defaults.policy as PolicyDefinition);
+  const configYaml = opts?.configYaml
+    ?? generateServerConfig(defaults.serverConfig as ServerConfigOpts);
+
+  const installScript = opts?.agentshVersion
+    ? INSTALL_SCRIPT.replace(`AGENTSH_VERSION="${AGENTSH_VERSION}"`, `AGENTSH_VERSION="${opts.agentshVersion}"`)
+    : INSTALL_SCRIPT;
+
+  return spec
+    .aptDeps('ca-certificates', 'curl', 'jq', 'libseccomp2', 'sudo', 'fuse3', 'python3', 'file', 'sqlite3')
+    .additionalFiles({
+      '/opt/install-agentsh.sh': { content: installScript },
+      '/etc/agentsh/config.yml': { content: configYaml },
+      '/etc/agentsh/policies/default.yaml': { content: policyYaml },
+      '/opt/agentsh-startup.sh': { content: STARTUP_SCRIPT },
+      '/etc/environment': {
+        content: [
+          'AGENTSH_SERVER=http://127.0.0.1:18080',
+          'AGENTSH_SHIM_FORCE=1',
+        ].join('\n'),
+      },
+    })
+    .systemdService({
+      name: 'install-agentsh',
+      mode: 'oneshot',
+      exec: ['bash /opt/install-agentsh.sh'],
+      wantedBy: ['multi-user.target'],
+    })
+    .systemdService({
+      name: 'agentsh',
+      mode: 'service',
+      exec: ['bash /opt/agentsh-startup.sh'],
+      env: {
+        AGENTSH_SERVER: 'http://127.0.0.1:18080',
+        AGENTSH_SHIM_FORCE: '1',
+      },
+      after: ['install-agentsh.service'],
+      wantedBy: ['multi-user.target'],
+    });
 }
