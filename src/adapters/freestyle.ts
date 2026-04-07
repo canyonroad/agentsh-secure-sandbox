@@ -181,13 +181,196 @@ export function freestyleDefaults(): Partial<SecureConfig> {
     development: { disableAuth: true, verboseErrors: false },
   };
 
-  // Policy is added in Task 6. This placeholder lets the function
-  // return a valid-looking Partial<SecureConfig> in the meantime.
+  // Policy translated from agentsh-freestyle/default.yaml.
+  // `approve` decisions on files/commands become `deny` (TS schema only
+  // models `approve` for package rules, and embedded adapters have no
+  // approval callback loop wired up).
+  // First-match-wins: order matters.
   const policy: PolicyDefinition = {
-    file: [],
-    network: [],
-    commands: [],
-  } as unknown as PolicyDefinition;
+    file: [
+      // --- Deny privilege escalation binaries ---
+      { deny: [
+        '/usr/bin/sudo', '/usr/bin/su', '/usr/bin/pkexec', '/usr/bin/doas',
+        '/bin/su', '/usr/sbin/chroot', '/usr/bin/nsenter', '/usr/bin/unshare',
+      ] },
+
+      // --- Deny Freestyle infrastructure ---
+      { deny: [
+        '/usr/bin/envd',
+        '/usr/bin/socat',
+        '/etc/systemd/**',
+        '/run/systemd/**',
+      ] },
+
+      // --- Deny credentials (approve → deny) ---
+      { deny: ['/home/user/.ssh/**', '/root/.ssh/**'] },
+      { deny: ['/home/user/.aws/**', '/root/.aws/**'] },
+      { deny: [
+        '/home/user/.gcloud/**', '/home/user/.azure/**',
+        '/home/user/.config/gcloud/**', '/home/user/.kube/**',
+        '/root/.gcloud/**', '/root/.azure/**',
+        '/root/.config/gcloud/**', '/root/.kube/**',
+      ] },
+      { deny: ['**/.env', '**/.env.*'] },
+      { deny: ['/home/user/.git-credentials', '/root/.git-credentials', '**/.netrc'] },
+
+      // --- Workspace: read/open/stat/list, then write/create/mkdir/chmod/rename ---
+      { allow: ['/home/user', '/home/user/**', '/workspace', '/workspace/**'],
+        ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+      { allow: ['/home/user', '/home/user/**', '/workspace', '/workspace/**'],
+        ops: ['write', 'create', 'mkdir', 'chmod', 'rename'] },
+      { softDelete: ['/home/user', '/home/user/**', '/workspace', '/workspace/**'] },
+
+      // --- Temp directories (full access) ---
+      { allow: ['/tmp/**', '/var/tmp/**'] },
+
+      // --- System paths (read-only) ---
+      { allow: ['/usr/**', '/lib/**', '/lib64/**', '/bin/**', '/sbin/**'],
+        ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+
+      // --- Essential device nodes ---
+      { allow: [
+        '/dev/null', '/dev/zero', '/dev/urandom', '/dev/random',
+        '/dev/stdin', '/dev/stdout', '/dev/stderr',
+        '/dev/fd/**', '/dev/pts/**', '/dev/tty',
+      ], ops: ['read', 'write', 'open', 'stat'] },
+
+      // --- Package caches (read-only) ---
+      { allow: [
+        '/home/user/.npm/**', '/home/user/.cache/**', '/home/user/.cargo/**',
+        '/root/.npm/**', '/root/.cache/**', '/root/.cargo/**',
+      ], ops: ['read', 'open', 'stat', 'list'] },
+
+      // --- Sensitive /etc files (deny before /etc read allow) ---
+      { deny: ['/etc/shadow', '/etc/gshadow', '/etc/sudoers', '/etc/sudoers.d/**'] },
+
+      // --- /etc minimal read ---
+      { allow: [
+        '/etc/hosts', '/etc/resolv.conf',
+        '/etc/ssl/**', '/etc/ca-certificates/**',
+        '/etc/localtime', '/etc/timezone',
+        '/etc/ld.so.cache', '/etc/ld.so.preload', '/etc/ld.so.nohwcap',
+        '/etc/nsswitch.conf', '/etc/passwd', '/etc/group',
+        '/etc/fuse.conf',
+      ], ops: ['read', 'open', 'stat', 'readlink'] },
+
+      // --- /proc/self for process introspection ---
+      { allow: ['/proc/self/**', '/proc/thread-self/**'],
+        ops: ['read', 'open', 'stat', 'list', 'readlink'] },
+
+      // --- agentsh runtime ---
+      { allow: ['/var/lib/agentsh/**', '/var/log/agentsh/**'],
+        ops: ['read', 'write', 'open', 'stat', 'list', 'readlink'] },
+
+      // --- Block /proc and /sys (catch-all, before default deny) ---
+      { deny: ['/proc/**', '/sys/**'] },
+
+      // --- Default deny ---
+      { deny: '**' },
+    ],
+    network: [
+      // Localhost (agentsh server + embedded LLM proxy)
+      { allowCidrs: ['127.0.0.1/32', '::1/128'] },
+      // Package registries
+      { allow: ['registry.npmjs.org'], ports: [443] },
+      { allow: ['pypi.org', 'files.pythonhosted.org'], ports: [443] },
+      { allow: ['crates.io', 'static.crates.io'], ports: [443] },
+      { allow: ['proxy.golang.org', 'sum.golang.org'], ports: [443] },
+      // Block cloud metadata (SSRF protection)
+      { denyCidrs: ['169.254.169.254/32', '100.100.100.200/32'] },
+      // Block private/internal networks
+      { denyCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16'] },
+      // Block Freestyle internal events service (TEST-NET-1 range per reference config)
+      { denyCidrs: ['192.0.2.0/24'] },
+      // Block example malicious domains (kept from reference as test fixture)
+      { deny: ['evil.com', '*.evil.com'] },
+      // Default deny
+      { deny: '*' },
+    ],
+    commands: [
+      // Network tools (network rules enforce domain policy)
+      { allow: ['curl', 'wget'] },
+      // Safe commands
+      {
+        allow: [
+          'bash', 'sh', '/bin/bash', '/bin/sh', '/usr/bin/bash', '/usr/bin/sh',
+          'ls', 'cat', 'head', 'tail', 'grep', 'find', 'wc', 'sort', 'uniq',
+          'diff', 'pwd', 'echo', 'date', 'which',
+          'env', 'printenv', 'true', 'false', 'test', '[',
+          'expr', 'seq', 'sh.real', 'bash.real',
+        ],
+      },
+      // Dev tools
+      {
+        allow: [
+          'git', 'node', 'npm', 'python', 'python3', 'pip', 'pip3',
+          'cargo', 'go', 'make',
+        ],
+      },
+      // Deny raw network tools (reverse-shell prevention)
+      { deny: ['nc', 'netcat', 'ncat', 'socat', 'telnet', 'ssh', 'scp', 'rsync'] },
+      // Deny system administration
+      {
+        deny: [
+          'shutdown', 'reboot', 'systemctl', 'service',
+          'mount', 'umount', 'dd', 'fdisk', 'mkfs',
+          'kill', 'killall', 'pkill',
+        ],
+      },
+      // Deny privilege escalation
+      { deny: ['sudo', 'su', 'doas', 'chroot', 'nsenter', 'unshare'] },
+      // Deny Freestyle infrastructure interference
+      { deny: ['socat', 'envd', 'iptables', 'ip6tables', 'nft', 'tc', 'ip'] },
+      // Allow all other (file + network rules are the real enforcement)
+      { allow: '*' },
+    ],
+    envPolicy: {
+      allow: [
+        'PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'LANG_*', 'LC_*',
+        'TERM', 'TERM_*', 'TZ', 'PWD', 'OLDPWD', 'SHLVL', '_',
+        'NODE_ENV', 'NODE_PATH', 'NPM_*',
+        'PYTHONPATH', 'VIRTUAL_ENV', 'PIP_*',
+        'GIT_*',
+        'AGENTSH_*',
+        'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',
+      ],
+      deny: [
+        'AWS_*', 'AZURE_*', 'GCP_*', 'GOOGLE_*',
+        'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+        'DATABASE_URL', 'DB_*',
+        'SECRET_*', 'PASSWORD*', 'PRIVATE_*', 'API_KEY*', 'TOKEN*',
+      ],
+      blockIteration: true,
+      maxBytes: 65536,
+      maxKeys: 100,
+    },
+    signalRules: [
+      { name: 'allow-self', signals: ['@all'], target: { type: 'self' }, decision: 'allow' },
+      { name: 'allow-children', signals: ['@all'], target: { type: 'children' }, decision: 'allow' },
+      { name: 'allow-session', signals: ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGUSR1', 'SIGUSR2'], target: { type: 'session' }, decision: 'allow' },
+      { name: 'audit-parent', signals: ['@all'], target: { type: 'parent' }, decision: 'audit' },
+      { name: 'deny-external-fatal', signals: ['@fatal'], target: { type: 'external' }, decision: 'deny', fallback: 'audit', message: 'Blocking signal to process outside session' },
+      { name: 'deny-system', signals: ['@all'], target: { type: 'system' }, decision: 'deny', fallback: 'audit', message: 'Blocking signal to system process' },
+    ],
+    unixSocketRules: [
+      { name: 'deny-system-sockets', paths: ['/var/run/**'], operations: ['connect', 'bind', 'listen', 'sendto'], decision: 'deny' },
+    ],
+    resourceLimits: {
+      maxMemoryMb: 2048,
+      cpuQuotaPercent: 50,
+      pidsMax: 100,
+      commandTimeout: '5m',
+      sessionTimeout: '1h',
+      idleTimeout: '15m',
+    },
+    auditSettings: {
+      logAllowed: true,
+      logDenied: true,
+      logApproved: true,
+      includeStdout: true,
+      includeStderr: true,
+    },
+  };
 
   return {
     policy,
