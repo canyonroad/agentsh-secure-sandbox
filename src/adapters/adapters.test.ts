@@ -989,6 +989,63 @@ describe('freestyle adapter', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('network error');
   });
+
+  it('writeFile with string uses vm.fs.writeTextFile', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.writeFile('/home/user/a.txt', 'hello');
+    expect(mock.fs.writeTextFile).toHaveBeenCalledWith('/home/user/a.txt', 'hello');
+    expect(mock.exec).not.toHaveBeenCalled();
+  });
+
+  it('writeFile with Buffer uses vm.fs.writeFile', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const buf = Buffer.from([0, 1, 2, 3]);
+    await adapter.writeFile('/home/user/a.bin', buf);
+    expect(mock.fs.writeFile).toHaveBeenCalledWith('/home/user/a.bin', buf);
+    expect(mock.fs.writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('writeFile wraps SDK errors', async () => {
+    const mock = mockVm();
+    mock.fs.writeTextFile.mockRejectedValueOnce(new Error('permission denied'));
+    const adapter = freestyle(mock);
+    await expect(adapter.writeFile('/root/x', 'y')).rejects.toThrow(/writeFile failed.*permission denied/);
+  });
+
+  it('readFile uses vm.fs.readTextFile', async () => {
+    const mock = mockVm();
+    mock.fs.readTextFile.mockResolvedValueOnce('contents');
+    const adapter = freestyle(mock);
+    const got = await adapter.readFile('/home/user/b.txt');
+    expect(mock.fs.readTextFile).toHaveBeenCalledWith('/home/user/b.txt');
+    expect(got).toBe('contents');
+  });
+
+  it('readFile wraps SDK errors', async () => {
+    const mock = mockVm();
+    mock.fs.readTextFile.mockRejectedValueOnce(new Error('no such file'));
+    const adapter = freestyle(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow(/readFile failed.*no such file/);
+  });
+
+  it('fileExists returns vm.fs.exists result', async () => {
+    const mock = mockVm();
+    mock.fs.exists.mockResolvedValueOnce(true);
+    const adapter = freestyle(mock);
+    expect(await adapter.fileExists!('/usr/local/bin/agentsh')).toBe(true);
+
+    mock.fs.exists.mockResolvedValueOnce(false);
+    expect(await adapter.fileExists!('/nope')).toBe(false);
+  });
+
+  it('stop calls vm.stop', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.stop!();
+    expect(mock.stop).toHaveBeenCalled();
+  });
 });
 
 // ─── Provider defaults ──────────────────────────────────────

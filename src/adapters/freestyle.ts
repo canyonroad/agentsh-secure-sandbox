@@ -74,17 +74,29 @@ export function freestyle(vm: any): SandboxAdapter {
 
       return run(command);
     },
-    async writeFile(_path, _content) {
-      throw new Error('freestyle.writeFile: not implemented');
+    async writeFile(path, content) {
+      try {
+        if (Buffer.isBuffer(content)) {
+          await vm.fs.writeFile(path, content);
+        } else {
+          await vm.fs.writeTextFile(path, content);
+        }
+      } catch (err: any) {
+        throw new Error(`writeFile failed: ${err?.message ?? err}`);
+      }
     },
-    async readFile(_path) {
-      throw new Error('freestyle.readFile: not implemented');
+    async readFile(path) {
+      try {
+        return await vm.fs.readTextFile(path);
+      } catch (err: any) {
+        throw new Error(`readFile failed: ${err?.message ?? err}`);
+      }
     },
     async stop() {
-      throw new Error('freestyle.stop: not implemented');
+      await vm.stop();
     },
-    async fileExists(_path) {
-      throw new Error('freestyle.fileExists: not implemented');
+    async fileExists(path) {
+      return await vm.fs.exists(path);
     },
   };
 }
