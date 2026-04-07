@@ -2,8 +2,6 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
-import { generateServerConfig } from '../core/config.js';
-import { serializePolicy } from '../policies/serialize.js';
 
 const AGENTSH_VERSION = '0.17.0';
 
@@ -101,8 +99,99 @@ export function freestyle(vm: any): SandboxAdapter {
   };
 }
 
+/**
+ * Returns Freestyle-optimized defaults for SecureConfig.
+ *
+ * Key characteristics:
+ * - allowDegraded: true — Freestyle kernels lack Yama, so seccomp
+ *   file_monitor is disabled; agentsh settles into `minimal` security
+ *   mode (seccomp wrapper + network proxy + FUSE + cgroups).
+ * - FUSE deferred: enabled via `sudo /bin/chmod 666 /dev/fuse` at first
+ *   session start (guarded by marker file /tmp/.agentsh-fuse-enabled).
+ * - seccomp.fileMonitor disabled: conflicts with FUSE without Yama
+ *   (documented in agentsh-freestyle/config.yaml).
+ * - DLP with custom patterns for OpenAI / Anthropic / AWS / GitHub /
+ *   JWT / Slack tokens.
+ * - Workspace at /home/user (matches Freestyle VM default home).
+ * - Conservative resource limits (2 GB RAM, 50% CPU, 100 PIDs).
+ *
+ * Spread into your secureSandbox() call:
+ *
+ *   secureSandbox(freestyle(vm), { ...freestyleDefaults(), ...yourOverrides })
+ */
 export function freestyleDefaults(): Partial<SecureConfig> {
-  throw new Error('freestyleDefaults: not implemented');
+  const serverConfig: Omit<ServerConfigOpts, 'watchtower' | 'realPaths' | 'threatFeeds' | 'packageChecks'> = {
+    grpc: { addr: '127.0.0.1:9090' },
+    serverTimeouts: { readTimeout: '30s', writeTimeout: '60s', maxRequestSize: '10MB' },
+    logging: { level: 'info', format: 'text', output: 'stderr' },
+    sessions: {
+      baseDir: '/var/lib/agentsh/sessions',
+      maxSessions: 100,
+      defaultTimeout: '1h',
+      idleTimeout: '15m',
+      cleanupInterval: '5m',
+    },
+    audit: { enabled: true, sqlitePath: '/var/lib/agentsh/events.db' },
+    sandboxLimits: { maxMemoryMb: 4096, maxCpuPercent: 100, maxProcesses: 256 },
+    allowDegraded: true,
+    fuse: {
+      deferred: true,
+      deferredMarkerFile: '/tmp/.agentsh-fuse-enabled',
+      deferredEnableCommand: ['sudo', '/bin/chmod', '666', '/dev/fuse'],
+    },
+    networkIntercept: { interceptMode: 'all', proxyListenAddr: '127.0.0.1:0' },
+    seccompDetails: {
+      execve: true,
+      fileMonitor: { enabled: false, enforceWithoutFuse: false },
+    },
+    cgroups: { enabled: true },
+    unixSockets: { enabled: true },
+    envInject: {
+      BASH_ENV: '/usr/lib/agentsh/bash_startup.sh',
+    },
+    proxy: {
+      mode: 'embedded',
+      port: 0,
+      providers: {
+        anthropic: 'https://api.anthropic.com',
+        openai: 'https://api.openai.com',
+      },
+    },
+    dlp: {
+      mode: 'redact',
+      patterns: { email: true, phone: true, credit_card: true, ssn: true, api_keys: true },
+      customPatterns: [
+        { name: 'openai_key', display: 'OPENAI_KEY', regex: 'sk-[a-zA-Z0-9]{48,}' },
+        { name: 'anthropic_key', display: 'ANTHROPIC_KEY', regex: 'sk-ant-[a-zA-Z0-9-]{95,}' },
+        { name: 'aws_access_key', display: 'AWS_KEY', regex: 'AKIA[0-9A-Z]{16}' },
+        { name: 'github_pat', display: 'GITHUB_TOKEN', regex: 'ghp_[a-zA-Z0-9]{36}' },
+        { name: 'github_oauth', display: 'GITHUB_OAUTH', regex: 'gho_[a-zA-Z0-9]{36}' },
+        { name: 'jwt_token', display: 'JWT', regex: 'eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*' },
+        { name: 'private_key', display: 'PRIVATE_KEY', regex: '-----BEGIN [A-Z]+ PRIVATE KEY-----' },
+        { name: 'slack_token', display: 'SLACK_TOKEN', regex: 'xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24}' },
+      ],
+    },
+    approvals: { enabled: false },
+    metrics: { enabled: true, path: '/metrics' },
+    health: { path: '/health', readinessPath: '/ready' },
+    development: { disableAuth: true, verboseErrors: false },
+  };
+
+  // Policy is added in Task 6. This placeholder lets the function
+  // return a valid-looking Partial<SecureConfig> in the meantime.
+  const policy: PolicyDefinition = {
+    file: [],
+    network: [],
+    commands: [],
+  } as unknown as PolicyDefinition;
+
+  return {
+    policy,
+    workspace: '/home/user',
+    installStrategy: 'download',
+    realPaths: true,
+    serverConfig,
+  };
 }
 
 export function configureFreestyleSpec(_spec: any, _opts?: { agentshVersion?: string; policyYaml?: string; configYaml?: string }): any {
