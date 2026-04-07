@@ -247,7 +247,7 @@ export function freestyleDefaults(): Partial<SecureConfig> {
       // --- /etc minimal read ---
       { allow: [
         '/etc/hosts', '/etc/resolv.conf',
-        '/etc/ssl/**', '/etc/ca-certificates/**',
+        '/etc/ssl/certs/**', '/etc/ca-certificates/**',
         '/etc/localtime', '/etc/timezone',
         '/etc/ld.so.cache', '/etc/ld.so.preload', '/etc/ld.so.nohwcap',
         '/etc/nsswitch.conf', '/etc/passwd', '/etc/group',
@@ -300,6 +300,17 @@ export function freestyleDefaults(): Partial<SecureConfig> {
           'expr', 'seq', 'sh.real', 'bash.real',
         ],
       },
+      // Note: the reference YAML (agentsh-freestyle/default.yaml) applies
+      // an "approve" decision to install subcommands (`npm/pip/pip3/cargo`
+      // with args_patterns `^install.*` and `^add.*`). The TS
+      // CommandRuleSchema is a union of {allow}/{deny}/{redirect,to} and
+      // does not support args_patterns, so that rule cannot be expressed
+      // here. Dev tools stay allowed at the command layer; the real
+      // enforcement for untrusted install flows is (a) the network rules
+      // (only the package registries are reachable) and (b) embedded
+      // adapters have approvals disabled anyway. Consumers who need
+      // per-subcommand approval should bypass freestyleDefaults() and
+      // load the raw YAML via agentsh's own policy loader.
       // Dev tools
       {
         allow: [
