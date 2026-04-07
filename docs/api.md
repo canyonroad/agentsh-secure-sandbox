@@ -104,7 +104,7 @@ The security level depends on what the sandbox kernel supports. `secureSandbox()
 | `ptrace` | ptrace syscall interception + network proxy (exec, file, network, signal) | gVisor-based platforms (Modal) |
 | `landlock` | Landlock + network proxy (no FUSE) | Firecracker VMs (Vercel, Cloudflare) |
 | `landlock-only` | Landlock filesystem restrictions only | Limited kernel support |
-| `minimal` | Policy evaluation only, no kernel enforcement | Containers without seccomp |
+| `minimal` | Per-command seccomp wrapper + network proxy + FUSE soft-delete + cgroups (no seccomp user-notify, no Landlock) | Kernels lacking Yama / user-notify support (Freestyle) |
 
 > **Note:** seccomp and FUSE are disabled by default for compatibility. The detected security mode reflects kernel capabilities, not the active config. Landlock and network proxy are the default enforcement layers. Enable seccomp/FUSE explicitly via `serverConfig` if your environment supports them.
 
@@ -442,6 +442,84 @@ const sandbox = await secureSandbox(exe('my-vm'), {
   policy: myPolicy,
 });
 ```
+
+## Freestyle Adapter
+
+The Freestyle adapter wraps a [Freestyle](https://freestyle.sh) Firecracker-backed Linux VM created via the `freestyle-sandboxes` SDK. Freestyle exposes a typed filesystem API and a declarative `VmSpec` builder, which lets you bake agentsh into the VM image at snapshot time and skip the cold-start install entirely.
+
+```typescript
+import { secureSandbox } from '@agentsh/secure-sandbox';
+import {
+  freestyle,
+  freestyleDefaults,
+  configureFreestyleSpec,
+} from '@agentsh/secure-sandbox/adapters/freestyle';
+import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+
+const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
+
+// Bake agentsh into a snapshot — fastest cold boots
+const { vm } = await fs.vms.create({
+  spec: configureFreestyleSpec(new VmSpec().snapshot()),
+});
+
+const sandbox = await secureSandbox(freestyle(vm), {
+  ...freestyleDefaults(),
+  installStrategy: 'preinstalled',
+});
+
+const result = await sandbox.exec('echo hello');
+await sandbox.stop(); // calls vm.stop()
+```
+
+### `freestyle(vm)`
+
+Creates a `SandboxAdapter` from a Freestyle VM instance. Unlike shell-only adapters, Freestyle's typed `vm.fs.*` API is used directly for file I/O — no base64-over-exec workaround.
+
+The adapter expects these methods on `vm`:
+
+- `vm.exec({ command, timeoutMs? }) → Promise<{ stdout?, stderr?, statusCode? }>`
+- `vm.fs.writeTextFile(path, content)` / `vm.fs.writeFile(path, Buffer)` — string vs binary
+- `vm.fs.readTextFile(path)`
+- `vm.fs.exists(path)`
+- `vm.stop()`
+
+`exec()` wraps every command in `sh -c` so `cwd`, `env`, `sudo`, and shell metacharacters work consistently. `detached` commands are wrapped in `nohup sh -c ... &` so they survive the parent shell exit. `fileExists()` lets the provisioner skip the agentsh download when the binary is already baked into the snapshot.
+
+### `freestyleDefaults()`
+
+Returns Freestyle-optimized `Partial<SecureConfig>` with a standalone `PolicyDefinition` ported from the production `agentsh-freestyle/default.yaml`:
+
+- `installStrategy: 'download'` — defaults to runtime install; set `'preinstalled'` when using `configureFreestyleSpec`
+- `realPaths: true`
+- `workspace: '/home/user'` — matches Freestyle VM home
+- **`allowDegraded: true`** — Freestyle kernels lack Yama, so seccomp `fileMonitor` is disabled and the sandbox settles into `minimal` security mode (per-command seccomp wrapper + network proxy + FUSE soft-delete + cgroups)
+- **FUSE deferred** — enabled at first session start via `sudo /bin/chmod 666 /dev/fuse`, guarded by `/tmp/.agentsh-fuse-enabled`
+- **seccomp `fileMonitor: false`** — conflicts with FUSE on Yama-less kernels
+- DLP with custom patterns for OpenAI, Anthropic, AWS, GitHub, JWT, Slack tokens
+- Two-tier resource caps: outer server bound at 4 GB / 100% CPU / 256 procs, inner per-policy `resourceLimits` at 2 GB / 50% CPU / 100 PIDs
+- Workspace allows `/home/user/**` and `/workspace/**`; denies `/etc/systemd/**`, `/run/systemd/**`, `/usr/bin/envd`, `/usr/bin/socat`, and other Freestyle infrastructure
+- Network: localhost + npm/PyPI/crates/Go module registries only; blocks cloud metadata IPs and the Freestyle internal events service
+
+> **Note on `commands`:** the reference YAML uses `args_patterns` to gate `npm install`, `pip install`, etc. behind an approval step. The TS `CommandRuleSchema` is a `{allow}/{deny}/{redirect}` union with no `args_patterns` field, so dev tools stay allowed at the command layer. The real enforcement for untrusted installs is the network allowlist (only registries are reachable). Consumers who need per-subcommand approval should bypass `freestyleDefaults()` and load the raw YAML via agentsh's own policy loader.
+
+### `configureFreestyleSpec(spec, opts?)`
+
+Bakes agentsh into a Freestyle `VmSpec` by adding apt deps, install/startup scripts, and two systemd units: a oneshot installer and the agentsh server. Call this on a fresh `VmSpec` (typically `new VmSpec().snapshot()`) before passing it to `fs.vms.create`.
+
+```typescript
+const spec = configureFreestyleSpec(new VmSpec().snapshot(), {
+  agentshVersion: '0.17.0',          // optional, defaults to library-pinned version
+  policyYaml: customPolicyYaml,      // optional, defaults to freestyleDefaults() policy
+  configYaml: customServerConfigYaml, // optional, defaults to freestyleDefaults() server config
+});
+```
+
+The `agentsh` systemd service is wired with `Requires=install-agentsh.service` (hard dependency) so the server never starts if installation failed.
+
+`agentshVersion` is validated against `^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$` before being substituted into the install script — invalid values throw rather than risking shell injection.
+
+After the snapshot boots, agentsh is already running and the shell shim is installed, so pair this with `installStrategy: 'preinstalled'` to skip the runtime install path entirely.
 
 ## Custom Adapter
 
