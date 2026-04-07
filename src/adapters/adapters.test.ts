@@ -7,6 +7,7 @@ import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
 import { modal } from './modal.js';
 import { runloop } from './runloop.js';
+import { freestyle } from './freestyle.js';
 import { vercelDefaults } from './vercel.js';
 import { e2bDefaults } from './e2b.js';
 import { daytonaDefaults } from './daytona.js';
@@ -838,6 +839,48 @@ describe('runloop adapter', () => {
     const adapter = runloop(mock);
     await adapter.stop!();
     expect(mock.client.devboxes.shutdown).toHaveBeenCalledWith('devbox-123');
+  });
+});
+
+describe('freestyle adapter', () => {
+  function mockVm(execResponse: { stdout?: string | null; stderr?: string | null; statusCode?: number | null } = { stdout: 'out', stderr: '', statusCode: 0 }) {
+    return {
+      exec: vi.fn(async (_opts: { command: string; timeoutMs?: number } | string) => execResponse),
+      fs: {
+        writeTextFile: vi.fn(async (_path: string, _content: string) => {}),
+        writeFile: vi.fn(async (_path: string, _content: Buffer) => {}),
+        readTextFile: vi.fn(async (_path: string) => 'file content'),
+        exists: vi.fn(async (_path: string) => true),
+      },
+      stop: vi.fn(async () => ({})),
+    };
+  }
+
+  it('maps exec to vm.exec with sh -c wrapper', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('ls', ['-la']);
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('ls -la') }),
+    );
+    expect(result.stdout).toBe('out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('normalizes null statusCode to exitCode 0', async () => {
+    const mock = mockVm({ stdout: 'ok', stderr: null, statusCode: null });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('true', []);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  it('propagates non-zero statusCode', async () => {
+    const mock = mockVm({ stdout: '', stderr: 'nope', statusCode: 2 });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('false', []);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe('nope');
   });
 });
 

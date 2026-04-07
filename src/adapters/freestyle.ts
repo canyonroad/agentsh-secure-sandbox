@@ -41,9 +41,37 @@ const AGENTSH_VERSION = '0.17.0';
  * ```
  */
 export function freestyle(vm: any): SandboxAdapter {
+  async function run(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    try {
+      const result = await vm.exec({ command, timeoutMs });
+      return {
+        stdout: result?.stdout ?? '',
+        stderr: result?.stderr ?? '',
+        exitCode: result?.statusCode ?? 0,
+      };
+    } catch (err: any) {
+      return {
+        stdout: err?.stdout ?? '',
+        stderr: err?.stderr ?? err?.message ?? String(err),
+        exitCode: err?.statusCode ?? err?.exitCode ?? 1,
+      };
+    }
+  }
+
   return {
-    async exec(_cmd, _args, _opts) {
-      throw new Error('freestyle.exec: not implemented');
+    async exec(cmd, args, opts) {
+      const inner = `${envPrefix(opts?.env)}${opts?.sudo ? 'sudo ' : ''}${shellEscape(cmd, args)}`;
+      const wrapped = opts?.cwd
+        ? `cd '${opts.cwd.replace(/'/g, "'\\''")}' && ${inner}`
+        : inner;
+      const command = `sh -c ${shellEscape('', [wrapped])}`;
+
+      if (opts?.detached) {
+        run(`sh -c ${shellEscape('', [`nohup ${wrapped} > /dev/null 2>&1 &`])}`).catch(() => {});
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+
+      return run(command);
     },
     async writeFile(_path, _content) {
       throw new Error('freestyle.writeFile: not implemented');
