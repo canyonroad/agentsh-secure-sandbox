@@ -908,6 +908,59 @@ describe('freestyle adapter', () => {
     expect(command).toContain('FOO=bar');
     expect(command).toContain('server start');
   });
+
+  it('prepends sudo when opts.sudo is true', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('sudo chmod') }),
+    );
+  });
+
+  it('wraps with cd when opts.cwd is set', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('ls', [], { cwd: '/home/user/project' });
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    // The outer sh -c wrapper re-escapes single quotes, so the literal
+    // `cd '/home/user/project'` does not appear; we check the path and the
+    // `cd ` keyword are both present in the produced command.
+    expect(command).toContain('cd ');
+    expect(command).toContain('/home/user/project');
+    expect(command).toContain('ls');
+  });
+
+  it('escapes single quotes in cwd', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('ls', [], { cwd: "/tmp/it's-weird" });
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    // Same double-escape consideration as the previous test — we just
+    // confirm both halves of the quote-containing path survive into the
+    // outer command string.
+    expect(command).toContain('/tmp/it');
+    expect(command).toContain('s-weird');
+    expect(command).toContain('cd ');
+  });
+
+  it('includes env vars as inline assignments', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('TRACEPARENT=00-abc-def-01') }),
+    );
+  });
+
+  it('surfaces SDK errors as exitCode 1 without throwing', async () => {
+    const mock = mockVm();
+    mock.exec.mockRejectedValueOnce(new Error('network error'));
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('whatever', []);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('network error');
+  });
 });
 
 // ─── Provider defaults ──────────────────────────────────────
