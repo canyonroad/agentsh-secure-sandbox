@@ -16,6 +16,7 @@ import { blaxelDefaults } from './blaxel.js';
 import { modalDefaults } from './modal.js';
 import { spritesDefaults } from './sprites.js';
 import { runloopDefaults } from './runloop.js';
+import { freestyleDefaults } from './freestyle.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
 import { shellEscape } from '../core/shell.js';
@@ -1060,6 +1061,7 @@ describe('provider defaults', () => {
     { name: 'modalDefaults', fn: modalDefaults },
     { name: 'spritesDefaults', fn: spritesDefaults },
     { name: 'runloopDefaults', fn: runloopDefaults },
+    { name: 'freestyleDefaults', fn: freestyleDefaults },
   ];
 
   for (const { name, fn } of providers) {
@@ -1172,6 +1174,34 @@ describe('provider defaults', () => {
     expect(denyCmds).toContain('ssh');
     expect(denyCmds).toContain('nc');
     expect(denyCmds).toContain('kill');
+  });
+
+  it('freestyleDefaults includes /home/user workspace paths', () => {
+    const { policy } = freestyleDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/home/user/**');
+    expect(allPaths).toContain('/workspace/**');
+  });
+
+  it('freestyleDefaults blocks Freestyle infrastructure', () => {
+    const { policy } = freestyleDefaults() as any;
+    const denyPaths = policy.file
+      .filter((r: any) => 'deny' in r)
+      .flatMap((r: any) => Array.isArray(r.deny) ? r.deny : [r.deny]);
+    expect(denyPaths).toContain('/usr/bin/envd');
+    expect(denyPaths).toContain('/usr/bin/socat');
+    expect(denyPaths).toContain('/etc/systemd/**');
+  });
+
+  it('freestyleDefaults uses allowDegraded and disables seccomp file_monitor', () => {
+    const defaults = freestyleDefaults() as any;
+    expect(defaults.serverConfig.allowDegraded).toBe(true);
+    expect(defaults.serverConfig.seccompDetails.fileMonitor.enabled).toBe(false);
+    expect(defaults.serverConfig.fuse.deferred).toBe(true);
+    expect(defaults.serverConfig.fuse.deferredEnableCommand).toEqual(['sudo', '/bin/chmod', '666', '/dev/fuse']);
+    expect(defaults.workspace).toBe('/home/user');
   });
 
   it('runloopDefaults has soft-delete for workspace', () => {
