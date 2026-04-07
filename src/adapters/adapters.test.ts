@@ -7,6 +7,7 @@ import { blaxel } from './blaxel.js';
 import { sprites } from './sprites.js';
 import { modal } from './modal.js';
 import { runloop } from './runloop.js';
+import { freestyle, configureFreestyleSpec } from './freestyle.js';
 import { vercelDefaults } from './vercel.js';
 import { e2bDefaults } from './e2b.js';
 import { daytonaDefaults } from './daytona.js';
@@ -15,8 +16,10 @@ import { blaxelDefaults } from './blaxel.js';
 import { modalDefaults } from './modal.js';
 import { spritesDefaults } from './sprites.js';
 import { runloopDefaults } from './runloop.js';
+import { freestyleDefaults } from './freestyle.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
+import { shellEscape } from '../core/shell.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -841,6 +844,211 @@ describe('runloop adapter', () => {
   });
 });
 
+describe('freestyle adapter', () => {
+  function mockVm(execResponse: { stdout?: string | null; stderr?: string | null; statusCode?: number | null } = { stdout: 'out', stderr: '', statusCode: 0 }) {
+    return {
+      exec: vi.fn(async (_opts: { command: string; timeoutMs?: number } | string) => execResponse),
+      fs: {
+        writeTextFile: vi.fn(async (_path: string, _content: string) => {}),
+        writeFile: vi.fn(async (_path: string, _content: Buffer) => {}),
+        readTextFile: vi.fn(async (_path: string) => 'file content'),
+        exists: vi.fn(async (_path: string) => true),
+      },
+      stop: vi.fn(async () => ({})),
+    };
+  }
+
+  it('maps exec to vm.exec with sh -c wrapper', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('ls', ['-la']);
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('ls -la') }),
+    );
+    expect(result.stdout).toBe('out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('normalizes null statusCode to exitCode 0', async () => {
+    const mock = mockVm({ stdout: 'ok', stderr: null, statusCode: null });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('true', []);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
+  it('propagates non-zero statusCode', async () => {
+    const mock = mockVm({ stdout: '', stderr: 'nope', statusCode: 2 });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('false', []);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe('nope');
+  });
+
+  it('detached with cwd wraps the compound in an inner sh -c under nohup', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('ls', [], { cwd: '/home/user/project', detached: true });
+    expect(result.exitCode).toBe(0);
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(command).toContain('nohup sh -c');
+    expect(command).toContain('cd ');
+    expect(command).toContain('/home/user/project');
+    expect(command).toContain('ls');
+  });
+
+  it('detached with env wraps the compound in an inner sh -c under nohup', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('server', ['start'], {
+      env: { FOO: 'bar' },
+      detached: true,
+    });
+    expect(result.exitCode).toBe(0);
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(command).toContain('nohup sh -c');
+    expect(command).toContain('FOO=bar');
+    expect(command).toContain('server start');
+  });
+
+  it('prepends sudo when opts.sudo is true', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
+    expect(mock.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ command: expect.stringContaining('sudo chmod') }),
+    );
+  });
+
+  it('wraps with cd when opts.cwd is set', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('ls', [], { cwd: '/home/user/project' });
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    // The outer sh -c wrapper re-escapes single quotes, so the literal
+    // `cd '/home/user/project'` does not appear; we check the path and the
+    // `cd ` keyword are both present in the produced command.
+    expect(command).toContain('cd ');
+    expect(command).toContain('/home/user/project');
+    expect(command).toContain('ls');
+  });
+
+  it('escapes single quotes in cwd', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.exec('ls', [], { cwd: "/tmp/it's-weird" });
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    // Verify the outer command is the exact `sh -c <payload>` we expect.
+    // The inner wrapped string is: cd '/tmp/it'\''s-weird' && ls
+    // The outer payload is shellEscape('', [wrapped]), which single-quotes
+    // the whole thing and re-escapes any `'`.
+    const expectedInner = `cd '/tmp/it'\\''s-weird' && ls`;
+    const expectedOuter = `sh -c ${shellEscape('', [expectedInner])}`;
+    expect(command).toBe(expectedOuter);
+  });
+
+  it('includes env vars as inline assignments with safe quoting', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    // Simple value — should appear as `KEY=value`.
+    await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
+    const simpleCommand = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(simpleCommand).toContain('TRACEPARENT=00-abc-def-01');
+
+    // Metacharacter value — must be quoted so the remote shell does not
+    // interpret spaces, `$`, `;`, or single quotes.
+    (mock.exec as any).mockClear();
+    await adapter.exec('agentsh', ['exec'], {
+      env: { MSG: "hello $world; rm -rf / 'danger'" },
+    });
+    const complexCommand = (mock.exec as any).mock.calls[0][0].command as string;
+    // The raw, unquoted metacharacters must NOT appear as bare tokens in
+    // the generated command — if they did, the remote shell would expand
+    // or execute them.
+    expect(complexCommand).toContain('MSG=');
+    // The literal user value must still be present after quoting.
+    expect(complexCommand).toContain('hello');
+    expect(complexCommand).toContain('world');
+    expect(complexCommand).toContain('rm -rf');
+    expect(complexCommand).toContain('danger');
+    // Confirm the outer wrapper is a safe sh -c form.
+    expect(complexCommand.startsWith('sh -c ')).toBe(true);
+    // The command must NOT be a bare `MSG=hello $world; rm -rf / 'danger' agentsh exec`
+    // — that would fail the outer sh -c single-quote wrap. Instead, the outer
+    // wrapper must contain the metacharacters inside its single-quoted payload.
+    // We assert the outer wrapper uses single quotes (shellEscape's style).
+    // Note: shellEscape('', [wrapped]) joins ['', "'…'"] with a space, so the
+    // outer form is `sh -c <space><space>'…'` (two spaces).
+    expect(complexCommand).toMatch(/^sh -c {1,2}'/);
+  });
+
+  it('surfaces SDK errors as exitCode 1 without throwing', async () => {
+    const mock = mockVm();
+    mock.exec.mockRejectedValueOnce(new Error('network error'));
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('whatever', []);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('network error');
+  });
+
+  it('writeFile with string uses vm.fs.writeTextFile', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.writeFile('/home/user/a.txt', 'hello');
+    expect(mock.fs.writeTextFile).toHaveBeenCalledWith('/home/user/a.txt', 'hello');
+    expect(mock.exec).not.toHaveBeenCalled();
+  });
+
+  it('writeFile with Buffer uses vm.fs.writeFile', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    const buf = Buffer.from([0, 1, 2, 3]);
+    await adapter.writeFile('/home/user/a.bin', buf);
+    expect(mock.fs.writeFile).toHaveBeenCalledWith('/home/user/a.bin', buf);
+    expect(mock.fs.writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('writeFile wraps SDK errors', async () => {
+    const mock = mockVm();
+    mock.fs.writeTextFile.mockRejectedValueOnce(new Error('permission denied'));
+    const adapter = freestyle(mock);
+    await expect(adapter.writeFile('/root/x', 'y')).rejects.toThrow(/writeFile failed.*permission denied/);
+  });
+
+  it('readFile uses vm.fs.readTextFile', async () => {
+    const mock = mockVm();
+    mock.fs.readTextFile.mockResolvedValueOnce('contents');
+    const adapter = freestyle(mock);
+    const got = await adapter.readFile('/home/user/b.txt');
+    expect(mock.fs.readTextFile).toHaveBeenCalledWith('/home/user/b.txt');
+    expect(got).toBe('contents');
+  });
+
+  it('readFile wraps SDK errors', async () => {
+    const mock = mockVm();
+    mock.fs.readTextFile.mockRejectedValueOnce(new Error('no such file'));
+    const adapter = freestyle(mock);
+    await expect(adapter.readFile('/missing')).rejects.toThrow(/readFile failed.*no such file/);
+  });
+
+  it('fileExists returns vm.fs.exists result', async () => {
+    const mock = mockVm();
+    mock.fs.exists.mockResolvedValueOnce(true);
+    const adapter = freestyle(mock);
+    expect(await adapter.fileExists!('/usr/local/bin/agentsh')).toBe(true);
+
+    mock.fs.exists.mockResolvedValueOnce(false);
+    expect(await adapter.fileExists!('/nope')).toBe(false);
+  });
+
+  it('stop calls vm.stop', async () => {
+    const mock = mockVm();
+    const adapter = freestyle(mock);
+    await adapter.stop!();
+    expect(mock.stop).toHaveBeenCalled();
+  });
+});
+
 // ─── Provider defaults ──────────────────────────────────────
 
 describe('provider defaults', () => {
@@ -853,6 +1061,7 @@ describe('provider defaults', () => {
     { name: 'modalDefaults', fn: modalDefaults },
     { name: 'spritesDefaults', fn: spritesDefaults },
     { name: 'runloopDefaults', fn: runloopDefaults },
+    { name: 'freestyleDefaults', fn: freestyleDefaults },
   ];
 
   for (const { name, fn } of providers) {
@@ -965,6 +1174,120 @@ describe('provider defaults', () => {
     expect(denyCmds).toContain('ssh');
     expect(denyCmds).toContain('nc');
     expect(denyCmds).toContain('kill');
+  });
+
+  it('freestyleDefaults includes /home/user workspace paths', () => {
+    const { policy } = freestyleDefaults() as any;
+    const allPaths = policy.file
+      .filter((r: any) => 'allow' in r)
+      .flatMap((r: any) => Array.isArray(r.allow) ? r.allow : [r.allow]);
+    expect(allPaths).toContain('/home/user/**');
+    expect(allPaths).toContain('/workspace/**');
+  });
+
+  it('freestyleDefaults blocks Freestyle infrastructure', () => {
+    const { policy } = freestyleDefaults() as any;
+    const denyPaths = policy.file
+      .filter((r: any) => 'deny' in r)
+      .flatMap((r: any) => Array.isArray(r.deny) ? r.deny : [r.deny]);
+    expect(denyPaths).toContain('/usr/bin/envd');
+    expect(denyPaths).toContain('/usr/bin/socat');
+    expect(denyPaths).toContain('/etc/systemd/**');
+  });
+
+  it('freestyleDefaults uses allowDegraded and disables seccomp file_monitor', () => {
+    const defaults = freestyleDefaults() as any;
+    expect(defaults.serverConfig.allowDegraded).toBe(true);
+    expect(defaults.serverConfig.seccompDetails.fileMonitor.enabled).toBe(false);
+    expect(defaults.serverConfig.fuse.deferred).toBe(true);
+    expect(defaults.serverConfig.fuse.deferredEnableCommand).toEqual(['sudo', '/bin/chmod', '666', '/dev/fuse']);
+    expect(defaults.workspace).toBe('/home/user');
+  });
+
+  describe('configureFreestyleSpec', () => {
+    function mockSpec() {
+      const calls: { method: string; args: any[] }[] = [];
+      const spec: any = {
+        aptDeps: vi.fn((...deps: string[]) => { calls.push({ method: 'aptDeps', args: deps }); return spec; }),
+        additionalFiles: vi.fn((files: any) => { calls.push({ method: 'additionalFiles', args: [files] }); return spec; }),
+        systemdService: vi.fn((service: any) => { calls.push({ method: 'systemdService', args: [service] }); return spec; }),
+        _calls: calls,
+      };
+      return spec;
+    }
+
+    it('chains builder methods on the spec', () => {
+      const spec = mockSpec();
+      const result = configureFreestyleSpec(spec);
+      expect(result).toBe(spec);
+      expect(spec.aptDeps).toHaveBeenCalledWith(
+        'ca-certificates', 'curl', 'jq', 'libseccomp2', 'sudo',
+        'fuse3', 'python3', 'file', 'sqlite3',
+      );
+    });
+
+    it('adds install + startup scripts and serialized config/policy files', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec);
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const files = filesCall!.args[0];
+      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.17.0"');
+      expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
+      expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
+      expect(files['/etc/agentsh/policies/default.yaml'].content).toContain('/home/user');
+      expect(files['/etc/environment'].content).toContain('AGENTSH_SERVER=http://127.0.0.1:18080');
+    });
+
+    it('creates two systemd services with correct ordering and hard Requires dependency', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec);
+      const services = spec._calls.filter((c: any) => c.method === 'systemdService').map((c: any) => c.args[0]);
+      expect(services).toHaveLength(2);
+      expect(services[0].name).toBe('install-agentsh');
+      expect(services[0].mode).toBe('oneshot');
+      expect(services[1].name).toBe('agentsh');
+      expect(services[1].mode).toBe('service');
+      expect(services[1].after).toEqual(['install-agentsh.service']);
+      expect(services[1].requires).toEqual(['install-agentsh.service']);
+    });
+
+    it('throws on shell-injection agentshVersion', () => {
+      expect(() => configureFreestyleSpec(mockSpec(), { agentshVersion: '0.17.0; rm -rf /' }))
+        .toThrow(/invalid agentshVersion/i);
+    });
+
+    it('throws on empty agentshVersion', () => {
+      expect(() => configureFreestyleSpec(mockSpec(), { agentshVersion: '' }))
+        .toThrow(/invalid agentshVersion/i);
+    });
+
+    it('accepts valid pre-release agentshVersion and substitutes it in the install script', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, { agentshVersion: '1.2.3-rc.1' });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const installScript = filesCall!.args[0]['/opt/install-agentsh.sh'].content;
+      expect(installScript).toContain('AGENTSH_VERSION="1.2.3-rc.1"');
+    });
+
+    it('respects opts.agentshVersion override', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, { agentshVersion: '0.99.0' });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const installScript = filesCall!.args[0]['/opt/install-agentsh.sh'].content;
+      expect(installScript).toContain('AGENTSH_VERSION="0.99.0"');
+    });
+
+    it('respects opts.policyYaml and opts.configYaml overrides', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec, {
+        policyYaml: '# custom policy\n',
+        configYaml: '# custom config\n',
+      });
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const files = filesCall!.args[0];
+      expect(files['/etc/agentsh/policies/default.yaml'].content).toBe('# custom policy\n');
+      expect(files['/etc/agentsh/config.yml'].content).toBe('# custom config\n');
+    });
   });
 
   it('runloopDefaults has soft-delete for workspace', () => {

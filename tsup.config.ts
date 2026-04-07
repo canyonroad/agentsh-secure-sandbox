@@ -13,6 +13,7 @@ export default defineConfig({
     'src/adapters/modal.ts',
     'src/adapters/runloop.ts',
     'src/adapters/exe.ts',
+    'src/adapters/freestyle.ts',
     'src/policies/index.ts',
     'src/testing/index.ts',
   ],
