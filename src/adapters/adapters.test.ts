@@ -18,6 +18,7 @@ import { spritesDefaults } from './sprites.js';
 import { runloopDefaults } from './runloop.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
+import { shellEscape } from '../core/shell.js';
 
 describe('vercel adapter', () => {
   it('maps exec to sandbox.runCommand', async () => {
@@ -936,21 +937,48 @@ describe('freestyle adapter', () => {
     const adapter = freestyle(mock);
     await adapter.exec('ls', [], { cwd: "/tmp/it's-weird" });
     const command = (mock.exec as any).mock.calls[0][0].command as string;
-    // Same double-escape consideration as the previous test — we just
-    // confirm both halves of the quote-containing path survive into the
-    // outer command string.
-    expect(command).toContain('/tmp/it');
-    expect(command).toContain('s-weird');
-    expect(command).toContain('cd ');
+    // Verify the outer command is the exact `sh -c <payload>` we expect.
+    // The inner wrapped string is: cd '/tmp/it'\''s-weird' && ls
+    // The outer payload is shellEscape('', [wrapped]), which single-quotes
+    // the whole thing and re-escapes any `'`.
+    const expectedInner = `cd '/tmp/it'\\''s-weird' && ls`;
+    const expectedOuter = `sh -c ${shellEscape('', [expectedInner])}`;
+    expect(command).toBe(expectedOuter);
   });
 
-  it('includes env vars as inline assignments', async () => {
+  it('includes env vars as inline assignments with safe quoting', async () => {
     const mock = mockVm();
     const adapter = freestyle(mock);
+    // Simple value — should appear as `KEY=value`.
     await adapter.exec('agentsh', ['exec'], { env: { TRACEPARENT: '00-abc-def-01' } });
-    expect(mock.exec).toHaveBeenCalledWith(
-      expect.objectContaining({ command: expect.stringContaining('TRACEPARENT=00-abc-def-01') }),
-    );
+    const simpleCommand = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(simpleCommand).toContain('TRACEPARENT=00-abc-def-01');
+
+    // Metacharacter value — must be quoted so the remote shell does not
+    // interpret spaces, `$`, `;`, or single quotes.
+    (mock.exec as any).mockClear();
+    await adapter.exec('agentsh', ['exec'], {
+      env: { MSG: "hello $world; rm -rf / 'danger'" },
+    });
+    const complexCommand = (mock.exec as any).mock.calls[0][0].command as string;
+    // The raw, unquoted metacharacters must NOT appear as bare tokens in
+    // the generated command — if they did, the remote shell would expand
+    // or execute them.
+    expect(complexCommand).toContain('MSG=');
+    // The literal user value must still be present after quoting.
+    expect(complexCommand).toContain('hello');
+    expect(complexCommand).toContain('world');
+    expect(complexCommand).toContain('rm -rf');
+    expect(complexCommand).toContain('danger');
+    // Confirm the outer wrapper is a safe sh -c form.
+    expect(complexCommand.startsWith('sh -c ')).toBe(true);
+    // The command must NOT be a bare `MSG=hello $world; rm -rf / 'danger' agentsh exec`
+    // — that would fail the outer sh -c single-quote wrap. Instead, the outer
+    // wrapper must contain the metacharacters inside its single-quoted payload.
+    // We assert the outer wrapper uses single quotes (shellEscape's style).
+    // Note: shellEscape('', [wrapped]) joins ['', "'…'"] with a space, so the
+    // outer form is `sh -c <space><space>'…'` (two spaces).
+    expect(complexCommand).toMatch(/^sh -c {1,2}'/);
   });
 
   it('surfaces SDK errors as exitCode 1 without throwing', async () => {
