@@ -560,6 +560,251 @@ describe('PolicyDefinitionSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // ─── providers (secret providers) ─────────────────────────
+
+  it('accepts providers with keyring type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { local: { type: 'keyring' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with vault type and auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        myVault: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          namespace: 'team-a',
+          auth: { method: 'token', tokenRef: 'keyring://agentsh/vault-token' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts vault provider with approle auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'approle', roleId: 'r1', secretIdRef: 'keyring://agentsh/sid' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts vault provider with kubernetes auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'kubernetes', kubeRole: 'agentsh', kubeMountPath: 'kubernetes', kubeTokenPath: '/var/run/secrets/kubernetes.io/serviceaccount/token' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with aws-sm type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { aws: { type: 'aws-sm', region: 'us-east-1' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with gcp-sm type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { gcp: { type: 'gcp-sm', projectId: 'my-project' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with azure-kv type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { azure: { type: 'azure-kv', vaultUrl: 'https://myvault.vault.azure.net' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with op type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { onepass: { type: 'op', serverUrl: 'https://op.internal', apiKeyRef: 'keyring://agentsh/op_key' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts multiple providers', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        kr: { type: 'keyring' },
+        aws: { type: 'aws-sm', region: 'us-east-1' },
+        v: { type: 'vault', address: 'https://vault.internal' },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects provider with unknown type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'unknown-type' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects vault provider without required address', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'vault' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects aws-sm provider without required region', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'aws-sm' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects op provider without required serverUrl', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'op' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts empty providers map', () => {
+    const result = PolicyDefinitionSchema.safeParse({ providers: {} });
+    expect(result.success).toBe(true);
+  });
+
+  // ─── httpServices ──────────────────────────────────────────
+
+  it('accepts httpService with filtering rules only', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'internal-api',
+        upstream: 'https://api.internal.corp',
+        default: 'deny',
+        rules: [
+          { name: 'read-only', methods: ['GET'], paths: ['/**'], decision: 'allow' },
+        ],
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with credentials and rules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'github',
+        upstream: 'https://api.github.com',
+        exposeAs: 'GITHUB_API_URL',
+        aliases: ['api.github.com'],
+        allowDirect: false,
+        default: 'deny',
+        secret: { ref: 'vault://kv/data/github#token', format: 'ghp_{rand:36}' },
+        inject: { header: { name: 'Authorization', template: 'Bearer {{secret}}' } },
+        scrubResponse: true,
+        rules: [
+          { name: 'read-issues', methods: ['GET'], paths: ['/repos/*/*/issues'], decision: 'allow' },
+          { name: 'create-issue', methods: ['POST'], paths: ['/repos/*/*/issues'], decision: 'approve', message: 'Approve issue creation?', timeout: '5m' },
+        ],
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with credentials only (no rules)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'anthropic',
+        upstream: 'https://api.anthropic.com',
+        secret: { ref: 'keyring://agentsh/anthropic_key', format: 'sk-ant-{rand:93}' },
+        inject: { header: { name: 'x-api-key', template: '{{secret}}' } },
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with only required fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'minimal', upstream: 'https://api.example.com' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all httpService rule decisions', () => {
+    for (const decision of ['allow', 'deny', 'approve', 'audit'] as const) {
+      const result = PolicyDefinitionSchema.safeParse({
+        httpServices: [{
+          name: `test-${decision}`,
+          upstream: 'https://api.example.com',
+          rules: [{ name: `rule-${decision}`, paths: ['/**'], decision }],
+        }],
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects httpService rule without paths', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'test',
+        upstream: 'https://api.example.com',
+        rules: [{ name: 'bad', decision: 'allow' }],
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService rule without name', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'test',
+        upstream: 'https://api.example.com',
+        rules: [{ paths: ['/**'], decision: 'allow' }],
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService without name', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ upstream: 'https://api.example.com' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService without upstream', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService with invalid default', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test', upstream: 'https://x.com', default: 'audit' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService with unknown field', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test', upstream: 'https://x.com', extra: true }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts empty httpServices array', () => {
+    const result = PolicyDefinitionSchema.safeParse({ httpServices: [] });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validatePolicy', () => {

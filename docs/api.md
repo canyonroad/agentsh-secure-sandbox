@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.17.0',            // agentsh binary version
+  agentshVersion: '0.18.0',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -217,6 +217,144 @@ const sandbox = await secureSandbox(vercel(raw), { policy, packageChecks: {} });
 | `ecosystem` | `string` | Package ecosystem (e.g. `'npm'`, `'pip'`) |
 | `options` | `Record<string, unknown>` | Additional match options |
 
+## Secret Providers
+
+Define external secret backends in the policy so HTTP services can reference secrets by name. Secrets are fetched at runtime by the agentsh server — the agent never sees raw credentials.
+
+```typescript
+import { agentDefault, merge } from '@agentsh/secure-sandbox/policies';
+
+const policy = merge(agentDefault(), {
+  providers: {
+    'my-api-key': { type: 'keyring' },
+    'vault-secret': {
+      type: 'vault',
+      address: 'https://vault.example.com',
+      namespace: 'prod',
+      auth: { method: 'approle', roleId: 'my-role', secretId: 'my-secret' },
+    },
+    'aws-secret': { type: 'aws-sm', region: 'us-east-1' },
+    'gcp-secret': { type: 'gcp-sm', projectId: 'my-project' },
+    'azure-secret': { type: 'azure-kv', vaultUrl: 'https://my-vault.vault.azure.net' },
+    'op-secret': { type: 'op', serverUrl: 'https://my.1password.com' },
+  },
+});
+```
+
+### Provider Types
+
+| Type | Required Fields | Description |
+|------|----------------|-------------|
+| `keyring` | — | OS keyring (no config needed) |
+| `vault` | `address` | HashiCorp Vault with optional `namespace` and `auth` |
+| `aws-sm` | `region` | AWS Secrets Manager |
+| `gcp-sm` | `projectId` | Google Cloud Secret Manager |
+| `azure-kv` | `vaultUrl` | Azure Key Vault |
+| `op` | `serverUrl` | 1Password Connect with optional `apiKey` / `apiKeyRef` |
+
+### Vault Authentication
+
+The `vault` provider supports three auth methods via the `auth` object:
+
+| Method | Fields |
+|--------|--------|
+| `token` | `token` or `tokenRef` (reference to a secret containing the token) |
+| `approle` | `roleId` / `roleIdRef`, `secretId` / `secretIdRef` |
+| `kubernetes` | `kubeRole`, `kubeMountPath`, `kubeTokenPath` |
+
+## HTTP Services
+
+Expose external HTTP APIs to the agent through the agentsh proxy with automatic credential injection. The agent calls a local URL; agentsh injects credentials from a secret provider and proxies to the upstream — the agent never sees the raw API key.
+
+```typescript
+import { agentDefault, merge } from '@agentsh/secure-sandbox/policies';
+
+const policy = merge(agentDefault(), {
+  providers: {
+    'github-token': { type: 'keyring' },
+  },
+  httpServices: [
+    {
+      name: 'github',
+      upstream: 'https://api.github.com',
+      exposeAs: 'github.local',
+      default: 'deny',
+      secret: { ref: 'github-token', format: 'bearer' },
+      inject: {
+        header: { name: 'Authorization', template: '{{secret}}' },
+      },
+      rules: [
+        { name: 'repos', paths: ['/repos/**'], decision: 'allow' },
+        { name: 'user', paths: ['/user'], decision: 'allow' },
+      ],
+      scrubResponse: true,
+    },
+  ],
+});
+```
+
+The agent sees `github.local` and can `curl http://github.local/repos/org/repo` — agentsh resolves it to `api.github.com`, injects the `Authorization: Bearer <token>` header, and proxies the request.
+
+### HTTP Service Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | Yes | Service identifier |
+| `upstream` | `string` | Yes | Upstream URL to proxy to |
+| `exposeAs` | `string` | No | Local hostname the agent uses to reach this service |
+| `aliases` | `string[]` | No | Additional local hostnames |
+| `allowDirect` | `boolean` | No | Allow direct access to upstream (bypass proxy) |
+| `default` | `'allow' \| 'deny'` | No | Default decision for unmatched paths |
+| `rules` | `HttpServiceRule[]` | No | Path-based access rules |
+| `secret` | `{ ref, format }` | No | Secret provider reference for credential injection |
+| `inject` | `{ header: { name, template } }` | No | How to inject the secret into requests |
+| `scrubResponse` | `boolean` | No | Strip injected credentials from responses |
+
+### HTTP Service Rules
+
+Each rule controls access to specific paths:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | Yes | Rule identifier |
+| `paths` | `string[]` | Yes | Glob patterns for matching request paths |
+| `methods` | `string[]` | No | HTTP methods to match (default: all) |
+| `decision` | `'allow' \| 'deny' \| 'approve' \| 'audit'` | Yes | What to do when matched |
+| `message` | `string` | No | Message shown when rule triggers |
+| `timeout` | `string` | No | Request timeout (e.g. `'30s'`) |
+
+## Audit Integrity
+
+HMAC-chain audit log integrity (v0.18.0+). Each audit record includes a cryptographic hash linking it to the previous record, creating a tamper-evident chain. If any record is modified or deleted, the chain breaks.
+
+```typescript
+const sandbox = await secureSandbox(adapter, {
+  serverConfig: {
+    audit: {
+      enabled: true,
+      sqlitePath: '/var/lib/agentsh/audit.db',
+      integrity: {
+        enabled: true,
+        algorithm: 'hmac-sha256',
+        keySource: 'file',
+        keyFile: '/etc/agentsh/hmac.key',
+      },
+    },
+  },
+});
+```
+
+### Key Sources
+
+| Source | Required Fields | Description |
+|--------|----------------|-------------|
+| `file` | `keyFile` | Read HMAC key from a local file |
+| `env` | `keyEnv` | Read HMAC key from an environment variable |
+| `aws_kms` | `awsKms: { keyId, region }` | AWS KMS envelope encryption (optional `encryptedDekFile`) |
+| `azure_keyvault` | `azureKeyVault: { vaultUrl, keyName }` | Azure Key Vault (optional `keyVersion`) |
+| `hashicorp_vault` | `hashicorpVault: { address, secretPath }` | HashiCorp Vault (optional `authMethod`, `tokenFile`, `kubernetesRole`, `approleId`, `secretId`, `keyField`) |
+| `gcp_kms` | `gcpKms: { keyName }` | Google Cloud KMS (optional `encryptedDekFile`) |
+
 ## Sprites Adapter
 
 The Sprites adapter wraps a `@fly/sprites` `Sprite` instance for use with Firecracker microVMs on [Sprites.dev](https://sprites.dev).
@@ -269,10 +407,10 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `serverTimeouts` | HTTP read/write timeouts and max request size |
 | `logging` | Log level, format, and output |
 | `sessions` | Session base dir, limits, timeouts, cleanup |
-| `audit` | SQLite audit logging |
+| `audit` | SQLite audit logging with optional HMAC integrity chain |
 | `sandboxLimits` | Memory, CPU, and process limits |
 | `allowDegraded` | Start sandbox even if FUSE/seccomp fail (useful for gVisor) |
-| `fuse` | FUSE deferred mode, marker file, and enable command |
+| `fuse` | FUSE enable flag, deferred mode, marker file, and enable command |
 | `networkIntercept` | Network intercept mode and proxy address |
 | `seccompDetails` | Execve filtering and file monitor |
 | `cgroups` | Cgroup isolation |
@@ -509,7 +647,7 @@ Bakes agentsh into a Freestyle `VmSpec` by adding apt deps, install/startup scri
 
 ```typescript
 const spec = configureFreestyleSpec(new VmSpec().snapshot(), {
-  agentshVersion: '0.17.0',          // optional, defaults to library-pinned version
+  agentshVersion: '0.18.0',          // optional, defaults to library-pinned version
   policyYaml: customPolicyYaml,      // optional, defaults to freestyleDefaults() policy
   configYaml: customServerConfigYaml, // optional, defaults to freestyleDefaults() server config
 });

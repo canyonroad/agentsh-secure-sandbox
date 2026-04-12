@@ -547,6 +547,186 @@ describe('serializePolicy', () => {
     const matchKeys = Object.keys(parsed.package_rules[0].match);
     expect(matchKeys).toEqual(['finding_type']);
   });
+
+  // ─── providers (secret providers) ─────────────────────────
+
+  it('serializes providers with multiple types', () => {
+    const result = serializePolicy({
+      providers: {
+        local: { type: 'keyring' },
+        aws: { type: 'aws-sm', region: 'us-east-1' },
+        myVault: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          namespace: 'ns',
+          auth: { method: 'token', tokenRef: 'keyring://agentsh/vt' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.local).toEqual({ type: 'keyring' });
+    expect(parsed.providers.aws).toEqual({ type: 'aws-sm', region: 'us-east-1' });
+    expect(parsed.providers.myVault).toEqual({
+      type: 'vault',
+      address: 'https://vault.internal',
+      namespace: 'ns',
+      auth: { method: 'token', token_ref: 'keyring://agentsh/vt' },
+    });
+  });
+
+  it('serializes gcp-sm provider with snake_case', () => {
+    const result = serializePolicy({
+      providers: { gcp: { type: 'gcp-sm', projectId: 'my-project' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.gcp).toEqual({ type: 'gcp-sm', project_id: 'my-project' });
+  });
+
+  it('serializes azure-kv provider with snake_case', () => {
+    const result = serializePolicy({
+      providers: { azure: { type: 'azure-kv', vaultUrl: 'https://myvault.vault.azure.net' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.azure).toEqual({ type: 'azure-kv', vault_url: 'https://myvault.vault.azure.net' });
+  });
+
+  it('serializes op provider with snake_case', () => {
+    const result = serializePolicy({
+      providers: { onepass: { type: 'op', serverUrl: 'https://op.internal', apiKeyRef: 'keyring://agentsh/op_key' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.onepass).toEqual({ type: 'op', server_url: 'https://op.internal', api_key_ref: 'keyring://agentsh/op_key' });
+  });
+
+  it('serializes vault provider with approle auth', () => {
+    const result = serializePolicy({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'approle', roleId: 'r1', secretIdRef: 'keyring://agentsh/sid' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.v.auth).toEqual({ method: 'approle', role_id: 'r1', secret_id_ref: 'keyring://agentsh/sid' });
+  });
+
+  it('serializes vault provider with kubernetes auth', () => {
+    const result = serializePolicy({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'kubernetes', kubeRole: 'agentsh', kubeMountPath: 'kubernetes' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers.v.auth).toEqual({ method: 'kubernetes', kube_role: 'agentsh', kube_mount_path: 'kubernetes' });
+  });
+
+  it('omits providers when empty', () => {
+    const result = serializePolicy({ providers: {} });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers).toBeUndefined();
+  });
+
+  it('omits providers when not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.providers).toBeUndefined();
+  });
+
+  // ─── httpServices ─────────────────────────────────────────
+
+  it('serializes httpService with credentials and rules', () => {
+    const result = serializePolicy({
+      httpServices: [{
+        name: 'github',
+        upstream: 'https://api.github.com',
+        exposeAs: 'GITHUB_API_URL',
+        aliases: ['api.github.com'],
+        allowDirect: false,
+        default: 'deny',
+        secret: { ref: 'vault://kv/data/github#token', format: 'ghp_{rand:36}' },
+        inject: { header: { name: 'Authorization', template: 'Bearer {{secret}}' } },
+        scrubResponse: true,
+        rules: [
+          { name: 'read-issues', methods: ['GET'], paths: ['/repos/*/*/issues'], decision: 'allow' },
+          { name: 'deny-rest', paths: ['/**'], decision: 'deny', message: 'Blocked' },
+        ],
+      }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.http_services).toHaveLength(1);
+    const svc = parsed.http_services[0];
+    expect(svc.name).toBe('github');
+    expect(svc.upstream).toBe('https://api.github.com');
+    expect(svc.expose_as).toBe('GITHUB_API_URL');
+    expect(svc.aliases).toEqual(['api.github.com']);
+    expect(svc.allow_direct).toBe(false);
+    expect(svc.default).toBe('deny');
+    expect(svc.secret).toEqual({ ref: 'vault://kv/data/github#token', format: 'ghp_{rand:36}' });
+    expect(svc.inject).toEqual({ header: { name: 'Authorization', template: 'Bearer {{secret}}' } });
+    expect(svc.scrub_response).toBe(true);
+    expect(svc.rules).toHaveLength(2);
+    expect(svc.rules[0]).toEqual({ name: 'read-issues', methods: ['GET'], paths: ['/repos/*/*/issues'], decision: 'allow' });
+    expect(svc.rules[1]).toEqual({ name: 'deny-rest', paths: ['/**'], decision: 'deny', message: 'Blocked' });
+  });
+
+  it('serializes httpService with only required fields', () => {
+    const result = serializePolicy({
+      httpServices: [{ name: 'minimal', upstream: 'https://api.example.com' }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.http_services).toHaveLength(1);
+    expect(parsed.http_services[0].name).toBe('minimal');
+    expect(parsed.http_services[0].upstream).toBe('https://api.example.com');
+    expect(parsed.http_services[0].expose_as).toBeUndefined();
+    expect(parsed.http_services[0].rules).toBeUndefined();
+    expect(parsed.http_services[0].secret).toBeUndefined();
+  });
+
+  it('serializes httpService rule with timeout', () => {
+    const result = serializePolicy({
+      httpServices: [{
+        name: 'test',
+        upstream: 'https://api.example.com',
+        rules: [{ name: 'approve-it', methods: ['POST'], paths: ['/action'], decision: 'approve', timeout: '5m' }],
+      }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.http_services[0].rules[0].timeout).toBe('5m');
+  });
+
+  it('serializes credentials-only httpService', () => {
+    const result = serializePolicy({
+      httpServices: [{
+        name: 'anthropic',
+        upstream: 'https://api.anthropic.com',
+        secret: { ref: 'keyring://agentsh/key', format: 'sk-ant-{rand:93}' },
+        inject: { header: { name: 'x-api-key', template: '{{secret}}' } },
+      }],
+    });
+    const parsed = yaml.load(result) as any;
+    const svc = parsed.http_services[0];
+    expect(svc.secret).toEqual({ ref: 'keyring://agentsh/key', format: 'sk-ant-{rand:93}' });
+    expect(svc.inject).toEqual({ header: { name: 'x-api-key', template: '{{secret}}' } });
+    expect(svc.rules).toBeUndefined();
+  });
+
+  it('omits http_services when httpServices is empty', () => {
+    const result = serializePolicy({ httpServices: [] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.http_services).toBeUndefined();
+  });
+
+  it('omits http_services when not set', () => {
+    const result = serializePolicy({ file: [{ allow: '/workspace/**' }] });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.http_services).toBeUndefined();
+  });
 });
 
 describe('systemPolicyYaml', () => {

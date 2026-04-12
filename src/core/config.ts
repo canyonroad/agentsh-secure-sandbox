@@ -10,10 +10,36 @@ export interface ServerConfigOpts {
   serverTimeouts?: { readTimeout?: string; writeTimeout?: string; maxRequestSize?: string };
   logging?: { level?: string; format?: string; output?: string };
   sessions?: { baseDir?: string; maxSessions?: number; defaultTimeout?: string; idleTimeout?: string; cleanupInterval?: string };
-  audit?: { enabled?: boolean; sqlitePath?: string; batchSize?: number; flushInterval?: string; channelSize?: number };
+  audit?: {
+    enabled?: boolean;
+    sqlitePath?: string;
+    batchSize?: number;
+    flushInterval?: string;
+    channelSize?: number;
+    integrity?: {
+      enabled?: boolean;
+      algorithm?: 'hmac-sha256' | 'hmac-sha512';
+      keySource?: 'file' | 'env' | 'aws_kms' | 'azure_keyvault' | 'hashicorp_vault' | 'gcp_kms';
+      keyFile?: string;
+      keyEnv?: string;
+      awsKms?: { keyId: string; region: string; encryptedDekFile?: string };
+      azureKeyVault?: { vaultUrl: string; keyName: string; keyVersion?: string };
+      hashicorpVault?: {
+        address: string;
+        authMethod?: string;
+        tokenFile?: string;
+        kubernetesRole?: string;
+        approleId?: string;
+        secretId?: string;
+        secretPath: string;
+        keyField?: string;
+      };
+      gcpKms?: { keyName: string; encryptedDekFile?: string };
+    };
+  };
   sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
   allowDegraded?: boolean;
-  fuse?: { deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
+  fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
   seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean } };
   cgroups?: { enabled?: boolean };
@@ -197,6 +223,48 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       if (opts.audit.channelSize !== undefined) storageObj.channel_size = opts.audit.channelSize;
       auditObj.storage = storageObj;
     }
+    if (opts.audit.integrity) {
+      const integ: Record<string, unknown> = {};
+      if (opts.audit.integrity.enabled !== undefined) integ.enabled = opts.audit.integrity.enabled;
+      if (opts.audit.integrity.algorithm) integ.algorithm = opts.audit.integrity.algorithm;
+      if (opts.audit.integrity.keySource) integ.key_source = opts.audit.integrity.keySource;
+      if (opts.audit.integrity.keyFile) integ.key_file = opts.audit.integrity.keyFile;
+      if (opts.audit.integrity.keyEnv) integ.key_env = opts.audit.integrity.keyEnv;
+      if (opts.audit.integrity.awsKms) {
+        integ.aws_kms = {
+          key_id: opts.audit.integrity.awsKms.keyId,
+          region: opts.audit.integrity.awsKms.region,
+          ...(opts.audit.integrity.awsKms.encryptedDekFile && { encrypted_dek_file: opts.audit.integrity.awsKms.encryptedDekFile }),
+        };
+      }
+      if (opts.audit.integrity.azureKeyVault) {
+        integ.azure_keyvault = {
+          vault_url: opts.audit.integrity.azureKeyVault.vaultUrl,
+          key_name: opts.audit.integrity.azureKeyVault.keyName,
+          ...(opts.audit.integrity.azureKeyVault.keyVersion && { key_version: opts.audit.integrity.azureKeyVault.keyVersion }),
+        };
+      }
+      if (opts.audit.integrity.hashicorpVault) {
+        const hv = opts.audit.integrity.hashicorpVault;
+        integ.hashicorp_vault = {
+          address: hv.address,
+          secret_path: hv.secretPath,
+          ...(hv.authMethod && { auth_method: hv.authMethod }),
+          ...(hv.tokenFile && { token_file: hv.tokenFile }),
+          ...(hv.kubernetesRole && { kubernetes_role: hv.kubernetesRole }),
+          ...(hv.approleId && { approle_id: hv.approleId }),
+          ...(hv.secretId && { secret_id: hv.secretId }),
+          ...(hv.keyField && { key_field: hv.keyField }),
+        };
+      }
+      if (opts.audit.integrity.gcpKms) {
+        integ.gcp_kms = {
+          key_name: opts.audit.integrity.gcpKms.keyName,
+          ...(opts.audit.integrity.gcpKms.encryptedDekFile && { encrypted_dek_file: opts.audit.integrity.gcpKms.encryptedDekFile }),
+        };
+      }
+      auditObj.integrity = integ;
+    }
     config.audit = auditObj;
   }
 
@@ -212,6 +280,7 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   // FUSE deferred
   if (opts.fuse) {
     const fuseObj = (config.sandbox as any).fuse;
+    if (opts.fuse.enabled !== undefined) fuseObj.enabled = opts.fuse.enabled;
     if (opts.fuse.deferred !== undefined) fuseObj.deferred = opts.fuse.deferred;
     if (opts.fuse.deferredMarkerFile) fuseObj.deferred_marker_file = opts.fuse.deferredMarkerFile;
     if (opts.fuse.deferredEnableCommand) fuseObj.deferred_enable_command = opts.fuse.deferredEnableCommand;

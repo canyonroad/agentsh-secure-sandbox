@@ -437,6 +437,163 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.fuse.deferred_marker_file).toBe('/tmp/.agentsh-fuse-enabled');
     expect(parsed.sandbox.fuse.deferred_enable_command).toEqual(['/bin/chmod', '666', '/dev/fuse']);
   });
+
+  it('sets fuse.enabled when explicitly set to true', () => {
+    const result = generateServerConfig({ fuse: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.enabled).toBe(true);
+  });
+
+  it('keeps fuse.enabled false by default even when other fuse opts are set', () => {
+    const result = generateServerConfig({ fuse: { deferred: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.enabled).toBe(false);
+    expect(parsed.sandbox.fuse.deferred).toBe(true);
+  });
+
+  it('generates audit.integrity with file key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        enabled: true,
+        sqlitePath: '/var/audit.db',
+        integrity: {
+          enabled: true,
+          algorithm: 'hmac-sha256',
+          keySource: 'file',
+          keyFile: '/etc/agentsh/hmac.key',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.enabled).toBe(true);
+    expect(parsed.audit.integrity.enabled).toBe(true);
+    expect(parsed.audit.integrity.algorithm).toBe('hmac-sha256');
+    expect(parsed.audit.integrity.key_source).toBe('file');
+    expect(parsed.audit.integrity.key_file).toBe('/etc/agentsh/hmac.key');
+  });
+
+  it('generates audit.integrity with env key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          algorithm: 'hmac-sha512',
+          keySource: 'env',
+          keyEnv: 'HMAC_KEY',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.algorithm).toBe('hmac-sha512');
+    expect(parsed.audit.integrity.key_source).toBe('env');
+    expect(parsed.audit.integrity.key_env).toBe('HMAC_KEY');
+  });
+
+  it('generates audit.integrity with aws_kms key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          keySource: 'aws_kms',
+          awsKms: { keyId: 'alias/my-key', region: 'us-east-1', encryptedDekFile: '/var/lib/agentsh/dek.enc' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.key_source).toBe('aws_kms');
+    expect(parsed.audit.integrity.aws_kms).toEqual({
+      key_id: 'alias/my-key',
+      region: 'us-east-1',
+      encrypted_dek_file: '/var/lib/agentsh/dek.enc',
+    });
+  });
+
+  it('generates audit.integrity with azure_keyvault key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          keySource: 'azure_keyvault',
+          azureKeyVault: { vaultUrl: 'https://myvault.vault.azure.net', keyName: 'hmac-key', keyVersion: 'v1' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.key_source).toBe('azure_keyvault');
+    expect(parsed.audit.integrity.azure_keyvault).toEqual({
+      vault_url: 'https://myvault.vault.azure.net',
+      key_name: 'hmac-key',
+      key_version: 'v1',
+    });
+  });
+
+  it('generates audit.integrity with hashicorp_vault key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          keySource: 'hashicorp_vault',
+          hashicorpVault: {
+            address: 'https://vault.internal',
+            authMethod: 'kubernetes',
+            kubernetesRole: 'agentsh',
+            secretPath: 'secret/data/agentsh/audit-key',
+            keyField: 'key',
+          },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.key_source).toBe('hashicorp_vault');
+    expect(parsed.audit.integrity.hashicorp_vault).toEqual({
+      address: 'https://vault.internal',
+      auth_method: 'kubernetes',
+      kubernetes_role: 'agentsh',
+      secret_path: 'secret/data/agentsh/audit-key',
+      key_field: 'key',
+    });
+  });
+
+  it('generates audit.integrity with gcp_kms key source', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          keySource: 'gcp_kms',
+          gcpKms: {
+            keyName: 'projects/my-project/locations/us-east1/keyRings/agentsh/cryptoKeys/audit',
+            encryptedDekFile: '/var/lib/agentsh/dek.enc',
+          },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.key_source).toBe('gcp_kms');
+    expect(parsed.audit.integrity.gcp_kms).toEqual({
+      key_name: 'projects/my-project/locations/us-east1/keyRings/agentsh/cryptoKeys/audit',
+      encrypted_dek_file: '/var/lib/agentsh/dek.enc',
+    });
+  });
+
+  it('omits audit.integrity when not set', () => {
+    const result = generateServerConfig({ audit: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity).toBeUndefined();
+  });
+
+  it('omits optional integrity fields when not provided', () => {
+    const result = generateServerConfig({
+      audit: {
+        integrity: {
+          enabled: true,
+          keySource: 'aws_kms',
+          awsKms: { keyId: 'alias/my-key', region: 'us-east-1' },
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.audit.integrity.aws_kms.encrypted_dek_file).toBeUndefined();
+  });
 });
 
 describe('defaultThreatFeeds', () => {
