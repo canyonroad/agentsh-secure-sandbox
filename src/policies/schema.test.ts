@@ -560,6 +560,127 @@ describe('PolicyDefinitionSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // ─── providers (secret providers) ─────────────────────────
+
+  it('accepts providers with keyring type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { local: { type: 'keyring' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with vault type and auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        myVault: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          namespace: 'team-a',
+          auth: { method: 'token', tokenRef: 'keyring://agentsh/vault-token' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts vault provider with approle auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'approle', roleId: 'r1', secretIdRef: 'keyring://agentsh/sid' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts vault provider with kubernetes auth', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        v: {
+          type: 'vault',
+          address: 'https://vault.internal',
+          auth: { method: 'kubernetes', kubeRole: 'agentsh', kubeMountPath: 'kubernetes', kubeTokenPath: '/var/run/secrets/kubernetes.io/serviceaccount/token' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with aws-sm type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { aws: { type: 'aws-sm', region: 'us-east-1' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with gcp-sm type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { gcp: { type: 'gcp-sm', projectId: 'my-project' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with azure-kv type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { azure: { type: 'azure-kv', vaultUrl: 'https://myvault.vault.azure.net' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts providers with op type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { onepass: { type: 'op', serverUrl: 'https://op.internal', apiKeyRef: 'keyring://agentsh/op_key' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts multiple providers', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: {
+        kr: { type: 'keyring' },
+        aws: { type: 'aws-sm', region: 'us-east-1' },
+        v: { type: 'vault', address: 'https://vault.internal' },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects provider with unknown type', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'unknown-type' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects vault provider without required address', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'vault' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects aws-sm provider without required region', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'aws-sm' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects op provider without required serverUrl', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      providers: { bad: { type: 'op' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts empty providers map', () => {
+    const result = PolicyDefinitionSchema.safeParse({ providers: {} });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validatePolicy', () => {

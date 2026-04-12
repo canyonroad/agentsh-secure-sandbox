@@ -196,6 +196,42 @@ export const UnixSocketRuleSchema = z
   })
   .strict();
 
+// ─── Secret providers ────────────────────────────────────
+
+const VaultAuthSchema = z
+  .object({
+    method: z.enum(['token', 'approle', 'kubernetes']).optional(),
+    token: z.string().optional(),
+    tokenRef: z.string().optional(),
+    roleId: z.string().optional(),
+    roleIdRef: z.string().optional(),
+    secretId: z.string().optional(),
+    secretIdRef: z.string().optional(),
+    kubeRole: z.string().optional(),
+    kubeMountPath: z.string().optional(),
+    kubeTokenPath: z.string().optional(),
+  })
+  .strict();
+
+export const SecretProviderSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('keyring') }).strict(),
+  z.object({
+    type: z.literal('vault'),
+    address: z.string(),
+    namespace: z.string().optional(),
+    auth: VaultAuthSchema.optional(),
+  }).strict(),
+  z.object({ type: z.literal('aws-sm'), region: z.string() }).strict(),
+  z.object({ type: z.literal('gcp-sm'), projectId: z.string() }).strict(),
+  z.object({ type: z.literal('azure-kv'), vaultUrl: z.string() }).strict(),
+  z.object({
+    type: z.literal('op'),
+    serverUrl: z.string(),
+    apiKey: z.string().optional(),
+    apiKeyRef: z.string().optional(),
+  }).strict(),
+]);
+
 // ─── Resource limits ───────────────────────────────────────
 
 export const ResourceLimitsSchema = z
@@ -237,6 +273,7 @@ export const PolicyDefinitionSchema = z
     unixSocketRules: z.array(UnixSocketRuleSchema).optional(),
     resourceLimits: ResourceLimitsSchema.optional(),
     auditSettings: AuditSettingsSchema.optional(),
+    providers: z.record(z.string(), SecretProviderSchema).optional(),
   })
   .strict();
 
@@ -256,6 +293,8 @@ export type SignalRule = z.infer<typeof SignalRuleSchema>;
 export type UnixSocketRule = z.infer<typeof UnixSocketRuleSchema>;
 export type ResourceLimits = z.infer<typeof ResourceLimitsSchema>;
 export type AuditSettings = z.infer<typeof AuditSettingsSchema>;
+export type VaultAuth = z.infer<typeof VaultAuthSchema>;
+export type SecretProvider = z.infer<typeof SecretProviderSchema>;
 
 // ─── Validation ─────────────────────────────────────────────
 

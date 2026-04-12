@@ -13,6 +13,8 @@ import type {
   UnixSocketRule,
   ResourceLimits,
   AuditSettings,
+  SecretProvider,
+  VaultAuth,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -312,6 +314,55 @@ function serializeAuditSettings(settings: AuditSettings): Record<string, unknown
   return out;
 }
 
+// ─── Secret providers ─────────────────────────────────────
+
+function serializeVaultAuth(auth: VaultAuth): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (auth.method) out.method = auth.method;
+  if (auth.token) out.token = auth.token;
+  if (auth.tokenRef) out.token_ref = auth.tokenRef;
+  if (auth.roleId) out.role_id = auth.roleId;
+  if (auth.roleIdRef) out.role_id_ref = auth.roleIdRef;
+  if (auth.secretId) out.secret_id = auth.secretId;
+  if (auth.secretIdRef) out.secret_id_ref = auth.secretIdRef;
+  if (auth.kubeRole) out.kube_role = auth.kubeRole;
+  if (auth.kubeMountPath) out.kube_mount_path = auth.kubeMountPath;
+  if (auth.kubeTokenPath) out.kube_token_path = auth.kubeTokenPath;
+  return out;
+}
+
+function serializeProviders(providers: Record<string, SecretProvider>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [name, p] of Object.entries(providers)) {
+    const entry: Record<string, unknown> = { type: p.type };
+    switch (p.type) {
+      case 'keyring':
+        break;
+      case 'vault':
+        entry.address = p.address;
+        if (p.namespace) entry.namespace = p.namespace;
+        if (p.auth) entry.auth = serializeVaultAuth(p.auth);
+        break;
+      case 'aws-sm':
+        entry.region = p.region;
+        break;
+      case 'gcp-sm':
+        entry.project_id = p.projectId;
+        break;
+      case 'azure-kv':
+        entry.vault_url = p.vaultUrl;
+        break;
+      case 'op':
+        entry.server_url = p.serverUrl;
+        if (p.apiKey) entry.api_key = p.apiKey;
+        if (p.apiKeyRef) entry.api_key_ref = p.apiKeyRef;
+        break;
+    }
+    out[name] = entry;
+  }
+  return out;
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 /**
@@ -371,6 +422,10 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.auditSettings) {
     doc.audit = serializeAuditSettings(policy.auditSettings);
+  }
+
+  if (policy.providers && Object.keys(policy.providers).length > 0) {
+    doc.providers = serializeProviders(policy.providers);
   }
 
   return yaml.dump(doc, { lineWidth: -1 });
