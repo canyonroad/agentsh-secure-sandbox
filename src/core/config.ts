@@ -13,7 +13,7 @@ export interface ServerConfigOpts {
   audit?: { enabled?: boolean; sqlitePath?: string; batchSize?: number; flushInterval?: string; channelSize?: number };
   sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
   allowDegraded?: boolean;
-  fuse?: { deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
+  fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
   seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean } };
   cgroups?: { enabled?: boolean };
@@ -212,6 +212,7 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   // FUSE deferred
   if (opts.fuse) {
     const fuseObj = (config.sandbox as any).fuse;
+    if (opts.fuse.enabled !== undefined) fuseObj.enabled = opts.fuse.enabled;
     if (opts.fuse.deferred !== undefined) fuseObj.deferred = opts.fuse.deferred;
     if (opts.fuse.deferredMarkerFile) fuseObj.deferred_marker_file = opts.fuse.deferredMarkerFile;
     if (opts.fuse.deferredEnableCommand) fuseObj.deferred_enable_command = opts.fuse.deferredEnableCommand;

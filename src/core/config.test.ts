@@ -437,6 +437,19 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.fuse.deferred_marker_file).toBe('/tmp/.agentsh-fuse-enabled');
     expect(parsed.sandbox.fuse.deferred_enable_command).toEqual(['/bin/chmod', '666', '/dev/fuse']);
   });
+
+  it('sets fuse.enabled when explicitly set to true', () => {
+    const result = generateServerConfig({ fuse: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.enabled).toBe(true);
+  });
+
+  it('keeps fuse.enabled false by default even when other fuse opts are set', () => {
+    const result = generateServerConfig({ fuse: { deferred: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.enabled).toBe(false);
+    expect(parsed.sandbox.fuse.deferred).toBe(true);
+  });
 });
 
 describe('defaultThreatFeeds', () => {
