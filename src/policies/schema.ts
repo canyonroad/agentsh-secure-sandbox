@@ -196,6 +196,54 @@ export const UnixSocketRuleSchema = z
   })
   .strict();
 
+// ─── HTTP services ───────────────────────────────────────
+
+const HttpServiceSecretSchema = z
+  .object({
+    ref: z.string(),
+    format: z.string(),
+  })
+  .strict();
+
+const HttpServiceInjectHeaderSchema = z
+  .object({
+    name: z.string(),
+    template: z.string(),
+  })
+  .strict();
+
+const HttpServiceInjectSchema = z
+  .object({
+    header: HttpServiceInjectHeaderSchema.optional(),
+  })
+  .strict();
+
+const HttpServiceRuleSchema = z
+  .object({
+    name: z.string(),
+    methods: z.array(z.string()).optional(),
+    paths: z.array(z.string()),
+    decision: z.enum(['allow', 'deny', 'approve', 'audit']),
+    message: z.string().optional(),
+    timeout: z.string().optional(),
+  })
+  .strict();
+
+export const HttpServiceSchema = z
+  .object({
+    name: z.string(),
+    upstream: z.string(),
+    exposeAs: z.string().optional(),
+    aliases: z.array(z.string()).optional(),
+    allowDirect: z.boolean().optional(),
+    default: z.enum(['allow', 'deny']).optional(),
+    rules: z.array(HttpServiceRuleSchema).optional(),
+    secret: HttpServiceSecretSchema.optional(),
+    inject: HttpServiceInjectSchema.optional(),
+    scrubResponse: z.boolean().optional(),
+  })
+  .strict();
+
 // ─── Secret providers ────────────────────────────────────
 
 const VaultAuthSchema = z
@@ -274,6 +322,7 @@ export const PolicyDefinitionSchema = z
     resourceLimits: ResourceLimitsSchema.optional(),
     auditSettings: AuditSettingsSchema.optional(),
     providers: z.record(z.string(), SecretProviderSchema).optional(),
+    httpServices: z.array(HttpServiceSchema).optional(),
   })
   .strict();
 
@@ -295,6 +344,11 @@ export type ResourceLimits = z.infer<typeof ResourceLimitsSchema>;
 export type AuditSettings = z.infer<typeof AuditSettingsSchema>;
 export type VaultAuth = z.infer<typeof VaultAuthSchema>;
 export type SecretProvider = z.infer<typeof SecretProviderSchema>;
+export type HttpServiceSecret = z.infer<typeof HttpServiceSecretSchema>;
+export type HttpServiceInjectHeader = z.infer<typeof HttpServiceInjectHeaderSchema>;
+export type HttpServiceInject = z.infer<typeof HttpServiceInjectSchema>;
+export type HttpServiceRule = z.infer<typeof HttpServiceRuleSchema>;
+export type HttpService = z.infer<typeof HttpServiceSchema>;
 
 // ─── Validation ─────────────────────────────────────────────
 

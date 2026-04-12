@@ -15,6 +15,7 @@ import type {
   AuditSettings,
   SecretProvider,
   VaultAuth,
+  HttpService,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -363,6 +364,43 @@ function serializeProviders(providers: Record<string, SecretProvider>): Record<s
   return out;
 }
 
+// ─── HTTP services ────────────────────────────────────────
+
+function serializeHttpServices(services: HttpService[]): Record<string, unknown>[] {
+  return services.map((svc) => {
+    const out: Record<string, unknown> = { name: svc.name, upstream: svc.upstream };
+    if (svc.exposeAs) out.expose_as = svc.exposeAs;
+    if (svc.aliases) out.aliases = svc.aliases;
+    if (svc.allowDirect !== undefined) out.allow_direct = svc.allowDirect;
+    if (svc.default) out.default = svc.default;
+    if (svc.rules) {
+      out.rules = svc.rules.map((rule) => {
+        const r: Record<string, unknown> = {
+          name: rule.name,
+          paths: rule.paths,
+          decision: rule.decision,
+        };
+        if (rule.methods) r.methods = rule.methods;
+        if (rule.message) r.message = rule.message;
+        if (rule.timeout) r.timeout = rule.timeout;
+        return r;
+      });
+    }
+    if (svc.secret) {
+      out.secret = { ref: svc.secret.ref, format: svc.secret.format };
+    }
+    if (svc.inject) {
+      const inj: Record<string, unknown> = {};
+      if (svc.inject.header) {
+        inj.header = { name: svc.inject.header.name, template: svc.inject.header.template };
+      }
+      out.inject = inj;
+    }
+    if (svc.scrubResponse !== undefined) out.scrub_response = svc.scrubResponse;
+    return out;
+  });
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 /**
@@ -426,6 +464,10 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.providers && Object.keys(policy.providers).length > 0) {
     doc.providers = serializeProviders(policy.providers);
+  }
+
+  if (policy.httpServices && policy.httpServices.length > 0) {
+    doc.http_services = serializeHttpServices(policy.httpServices);
   }
 
   return yaml.dump(doc, { lineWidth: -1 });

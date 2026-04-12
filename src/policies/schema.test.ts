@@ -681,6 +681,130 @@ describe('PolicyDefinitionSchema', () => {
     const result = PolicyDefinitionSchema.safeParse({ providers: {} });
     expect(result.success).toBe(true);
   });
+
+  // ─── httpServices ──────────────────────────────────────────
+
+  it('accepts httpService with filtering rules only', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'internal-api',
+        upstream: 'https://api.internal.corp',
+        default: 'deny',
+        rules: [
+          { name: 'read-only', methods: ['GET'], paths: ['/**'], decision: 'allow' },
+        ],
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with credentials and rules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'github',
+        upstream: 'https://api.github.com',
+        exposeAs: 'GITHUB_API_URL',
+        aliases: ['api.github.com'],
+        allowDirect: false,
+        default: 'deny',
+        secret: { ref: 'vault://kv/data/github#token', format: 'ghp_{rand:36}' },
+        inject: { header: { name: 'Authorization', template: 'Bearer {{secret}}' } },
+        scrubResponse: true,
+        rules: [
+          { name: 'read-issues', methods: ['GET'], paths: ['/repos/*/*/issues'], decision: 'allow' },
+          { name: 'create-issue', methods: ['POST'], paths: ['/repos/*/*/issues'], decision: 'approve', message: 'Approve issue creation?', timeout: '5m' },
+        ],
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with credentials only (no rules)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'anthropic',
+        upstream: 'https://api.anthropic.com',
+        secret: { ref: 'keyring://agentsh/anthropic_key', format: 'sk-ant-{rand:93}' },
+        inject: { header: { name: 'x-api-key', template: '{{secret}}' } },
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpService with only required fields', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'minimal', upstream: 'https://api.example.com' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all httpService rule decisions', () => {
+    for (const decision of ['allow', 'deny', 'approve', 'audit'] as const) {
+      const result = PolicyDefinitionSchema.safeParse({
+        httpServices: [{
+          name: `test-${decision}`,
+          upstream: 'https://api.example.com',
+          rules: [{ name: `rule-${decision}`, paths: ['/**'], decision }],
+        }],
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects httpService rule without paths', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'test',
+        upstream: 'https://api.example.com',
+        rules: [{ name: 'bad', decision: 'allow' }],
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService rule without name', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{
+        name: 'test',
+        upstream: 'https://api.example.com',
+        rules: [{ paths: ['/**'], decision: 'allow' }],
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService without name', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ upstream: 'https://api.example.com' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService without upstream', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService with invalid default', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test', upstream: 'https://x.com', default: 'audit' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects httpService with unknown field', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      httpServices: [{ name: 'test', upstream: 'https://x.com', extra: true }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts empty httpServices array', () => {
+    const result = PolicyDefinitionSchema.safeParse({ httpServices: [] });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validatePolicy', () => {
