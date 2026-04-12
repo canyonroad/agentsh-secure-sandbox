@@ -2,7 +2,7 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import { generateServerConfig } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
-import { serializePolicy } from '../policies/serialize.js';
+import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 
 const AGENTSH_VERSION = '0.18.0';
@@ -20,8 +20,8 @@ const INSTALL_SCRIPT = [
   'install -m 0755 /tmp/agentsh-shell-shim /usr/bin/agentsh-shell-shim',
   'install -m 0755 /tmp/agentsh-unixwrap /usr/local/bin/agentsh-unixwrap',
   'rm -f /tmp/agentsh.tar.gz /tmp/agentsh /tmp/agentsh-shell-shim /tmp/agentsh-unixwrap',
-  'mkdir -p /etc/agentsh/policies /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh /home/user',
-  'chmod 755 /etc/agentsh /etc/agentsh/policies /var/lib/agentsh /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh',
+  'mkdir -p /etc/agentsh/system /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh /home/user',
+  'chmod 755 /etc/agentsh /etc/agentsh/system /var/lib/agentsh /var/lib/agentsh/quarantine /var/lib/agentsh/sessions /var/log/agentsh',
   'echo "root ALL=(ALL) NOPASSWD: /usr/local/bin/agentsh" >> /etc/sudoers',
   'echo "root ALL=(ALL) NOPASSWD: /bin/chmod 666 /dev/fuse" >> /etc/sudoers',
   'echo "root ALL=(ALL) NOPASSWD: /bin/chmod 600 /dev/fuse" >> /etc/sudoers',
@@ -79,11 +79,11 @@ const STARTUP_SCRIPT = [
  *
  * @example
  * ```ts
- * import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+ * import { Freestyle, VmSpec } from 'freestyle-sandboxes';
  * import { secureSandbox } from '@agentsh/secure-sandbox';
  * import { freestyle, freestyleDefaults } from '@agentsh/secure-sandbox/adapters/freestyle';
  *
- * const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
+ * const fs = new Freestyle({ apiKey: process.env.FREESTYLE_API_KEY });
  * const { vm } = await fs.vms.create({ spec: new VmSpec() });
  * const sandbox = await secureSandbox(freestyle(vm), freestyleDefaults());
  * await sandbox.exec('echo hello');
@@ -446,8 +446,15 @@ export function freestyleDefaults(): Partial<SecureConfig> {
 
 /**
  * Bake agentsh into a Freestyle VmSpec via two systemd services: an
- * oneshot installer and the agentsh server. Call this on a fresh VmSpec
- * (usually `new VmSpec().snapshot()`) before passing it to `fs.vms.create`.
+ * oneshot installer and the agentsh server. Call this on a fresh VmSpec,
+ * then `.snapshot()` the result to push everything into the cached
+ * snapshot layer before passing it to `fs.vms.create`.
+ *
+ * Note: `.snapshot()` must be called AFTER configureFreestyleSpec — it
+ * pushes the current outer layer down to become the inner snapshot
+ * template. Calling `.snapshot()` first leaves an empty snapshot and
+ * the agentsh install ends up at the runtime layer, which the
+ * Freestyle API rejects.
  *
  * The spec defaults the policy + server config to `freestyleDefaults()`.
  * Override either via `opts.policyYaml` or `opts.configYaml` with a
@@ -459,11 +466,11 @@ export function freestyleDefaults(): Partial<SecureConfig> {
  *
  * @example
  * ```ts
- * import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+ * import { Freestyle, VmSpec } from 'freestyle-sandboxes';
  * import { configureFreestyleSpec, freestyle, freestyleDefaults } from '@agentsh/secure-sandbox/adapters/freestyle';
  *
- * const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
- * const spec = configureFreestyleSpec(new VmSpec().snapshot());
+ * const fs = new Freestyle({ apiKey: process.env.FREESTYLE_API_KEY });
+ * const spec = configureFreestyleSpec(new VmSpec()).snapshot();
  * const { vm } = await fs.vms.create({ spec });
  * const sandbox = await secureSandbox(freestyle(vm), {
  *   ...freestyleDefaults(),
@@ -494,7 +501,8 @@ export function configureFreestyleSpec(
     .additionalFiles({
       '/opt/install-agentsh.sh': { content: installScript },
       '/etc/agentsh/config.yml': { content: configYaml },
-      '/etc/agentsh/policies/default.yaml': { content: policyYaml },
+      '/etc/agentsh/policy.yml': { content: policyYaml },
+      '/etc/agentsh/system/policy.yml': { content: systemPolicyYaml() },
       '/opt/agentsh-startup.sh': { content: STARTUP_SCRIPT },
       '/etc/environment': {
         content: [

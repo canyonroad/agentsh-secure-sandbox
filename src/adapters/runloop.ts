@@ -99,7 +99,10 @@ export function runloop(devbox: any): SandboxAdapter {
  * Key characteristics:
  * - seccomp + unix_sockets enabled (atomic syscall interception)
  * - FUSE deferred (chmod'd via sudo on first session start)
- * - cgroups enabled for resource isolation
+ * - cgroups disabled (Runloop's kernel does not expose cgroup-v2
+ *   subtree_control reliably; agentsh v0.18.0 fails closed on missing
+ *   subtree_control, so this profile leaves cgroup-based limits off
+ *   and relies on Runloop's own per-devbox resource caps instead)
  * - ptrace disabled (unix_sockets wrapper provides enforcement)
  * - DLP with custom patterns for Runloop API keys and common secrets
  * - Policy translated from agentsh-runloop default.yaml (high-security,
@@ -129,7 +132,13 @@ export function runloopDefaults(): Partial<SecureConfig> {
     seccompDetails: {
       fileMonitor: { enabled: true, enforceWithoutFuse: true },
     },
-    cgroups: { enabled: true },
+    // Runloop's kernel does not expose cgroup-v2 subtree_control reliably.
+    // agentsh v0.18.0 (#197) made cgroup subtree_control checks fail closed,
+    // so leaving this enabled crashes the agentsh server at startup with
+    // "agentsh: capability check failed / Feature: cgroups-v2". Runloop
+    // already enforces per-devbox CPU/memory limits at the host level, so
+    // we trade the agentsh-level cgroup enforcement for compatibility.
+    cgroups: { enabled: false },
     unixSockets: { enabled: true },
     ptrace: { enabled: false },
     envInject: {

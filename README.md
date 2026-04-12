@@ -187,10 +187,10 @@ const sandbox = await secureSandbox(exe('my-vm'), {
 });
 
 // Freestyle (Firecracker VMs with declarative VmSpec — agentsh baked in at snapshot time)
-import { freestyle as freestyleClient, VmSpec } from 'freestyle-sandboxes';
+import { Freestyle, VmSpec } from 'freestyle-sandboxes';
 import { freestyle, freestyleDefaults, configureFreestyleSpec } from '@agentsh/secure-sandbox/adapters/freestyle';
-const fs = freestyleClient({ apiKey: process.env.FREESTYLE_API_KEY });
-const { vm } = await fs.vms.create({ spec: configureFreestyleSpec(new VmSpec().snapshot()) });
+const fs = new Freestyle({ apiKey: process.env.FREESTYLE_API_KEY });
+const { vm } = await fs.vms.create({ spec: configureFreestyleSpec(new VmSpec()).snapshot() });
 const sandbox = await secureSandbox(freestyle(vm), {
   ...freestyleDefaults(),
   installStrategy: 'preinstalled',

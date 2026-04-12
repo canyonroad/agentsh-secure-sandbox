@@ -1234,7 +1234,8 @@ describe('provider defaults', () => {
       expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.18.0"');
       expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
       expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
-      expect(files['/etc/agentsh/policies/default.yaml'].content).toContain('/home/user');
+      expect(files['/etc/agentsh/policy.yml'].content).toContain('/home/user');
+      expect(files['/etc/agentsh/system/policy.yml'].content).toContain('_system-protection');
       expect(files['/etc/environment'].content).toContain('AGENTSH_SERVER=http://127.0.0.1:18080');
     });
 
@@ -1285,7 +1286,7 @@ describe('provider defaults', () => {
       });
       const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
       const files = filesCall!.args[0];
-      expect(files['/etc/agentsh/policies/default.yaml'].content).toBe('# custom policy\n');
+      expect(files['/etc/agentsh/policy.yml'].content).toBe('# custom policy\n');
       expect(files['/etc/agentsh/config.yml'].content).toBe('# custom config\n');
     });
   });
