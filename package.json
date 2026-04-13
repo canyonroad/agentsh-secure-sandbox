@@ -1,6 +1,6 @@
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -112,7 +112,7 @@
   "peerDependencies": {
     "@blaxel/core": "^0.1.0 || ^0.2.0",
     "@cloudflare/sandbox": "^0.1.0",
-    "@daytonaio/sdk": "^0.12.0 || ^1.0.0",
+    "@daytonaio/sdk": ">=0.12.0 <2.0.0",
     "@e2b/code-interpreter": "^1.2.0",
     "@fly/sprites": "^0.0.1",
     "@vercel/sandbox": "^1.0.0",
