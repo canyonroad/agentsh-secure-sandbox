@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.18.0',            // agentsh binary version
+  agentshVersion: '0.18.2',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -23,7 +23,7 @@ const sandbox = await secureSandbox(adapter, {
 |--------|------|---------|-------------|
 | `policy` | `Policy` | `agentDefault()` | Policy rules for file, network, and command access |
 | `installStrategy` | `string` | `'download'` | How to install the agentsh binary in the sandbox |
-| `agentshVersion` | `string` | Latest | Pin a specific agentsh version |
+| `agentshVersion` | `string` | Library-pinned version | Pin a specific agentsh version |
 | `minimumSecurityMode` | `SecurityMode` | `undefined` | Fail if the sandbox kernel can't enforce at least this level |
 | `securityMode` | `SecurityMode` | `undefined` | Override detected security mode. Only used with `'running'` strategy (defaults to `'full'`). |
 | `sessionId` | `string` | `undefined` | Existing agentsh session ID. Only used with `'running'` strategy. Falls back to `$AGENTSH_SESSION_ID`. |
@@ -647,7 +647,7 @@ Bakes agentsh into a Freestyle `VmSpec` by adding apt deps, install/startup scri
 
 ```typescript
 const spec = configureFreestyleSpec(new VmSpec().snapshot(), {
-  agentshVersion: '0.18.0',          // optional, defaults to library-pinned version
+  agentshVersion: '0.18.2',          // optional, defaults to library-pinned version
   policyYaml: customPolicyYaml,      // optional, defaults to freestyleDefaults() policy
   configYaml: customServerConfigYaml, // optional, defaults to freestyleDefaults() server config
 });

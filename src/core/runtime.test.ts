@@ -85,20 +85,100 @@ describe('SecuredSandbox', () => {
       const sandbox = createSecuredSandbox(adapter, 'sid-123', 'full');
       await expect(sandbox.exec('ls')).rejects.toThrow(RuntimeError);
     });
+
+    it('falls back to agentsh wrap when exec precheck blocks an opaque shell script', async () => {
+      const adapter = createMockAdapter();
+      (adapter.exec as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            result: {
+              exit_code: 126,
+              error: {
+                code: 'E_POLICY_DENIED',
+                message: 'command denied by policy',
+                policy_rule: 'shellc-opaque-script',
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 126,
+        })
+        .mockResolvedValueOnce({
+          stdout: '200agentsh: FUSE workspace mount: /workspace\nagentsh: LLM proxy: http://127.0.0.1:18080\nsignal filter: load seccomp filter: operation canceled (continuing without)\n2026/04/16 22:26:32 ERROR wrap: failed to receive notify fd from wrapper error=\"no fd received (n=0, oobn=0)\" session_id=session-test\n',
+          stderr: '',
+          exitCode: 0,
+        });
+
+      const sandbox = createSecuredSandbox(adapter, 'sid-123', 'full');
+      const command = 'curl -s -o /dev/null -w "%{http_code}" https://registry.npmjs.org/ || echo no-curl';
+      const result = await sandbox.exec(command);
+
+      expect(result).toEqual({
+        stdout: '200',
+        stderr: '',
+        exitCode: 0,
+      });
+      expect(adapter.exec).toHaveBeenNthCalledWith(
+        1,
+        'agentsh',
+        [
+          'exec',
+          '--output',
+          'json',
+          'sid-123',
+          '--',
+          'bash',
+          '-c',
+          command,
+        ],
+        expect.objectContaining({ cwd: undefined }),
+      );
+      expect(adapter.exec).toHaveBeenNthCalledWith(
+        2,
+        'agentsh',
+        [
+          'wrap',
+          '--session',
+          'sid-123',
+          '--report=false',
+          '--',
+          'bash',
+          '-c',
+          command,
+        ],
+        expect.objectContaining({ cwd: undefined }),
+      );
+    });
   });
 
   describe('writeFile', () => {
-    it('routes through agentsh exec with base64 content', async () => {
+    it('routes through agentsh exec JSON with stdin content', async () => {
       const adapter = createMockAdapter();
       const sandbox = createSecuredSandbox(adapter, 'sid-123', 'full');
       const result = await sandbox.writeFile('/workspace/test.txt', 'hello');
       expect(result.success).toBe(true);
       expect(result.path).toBe('/workspace/test.txt');
-      expect(adapter.exec).toHaveBeenCalledWith(
-        'agentsh',
-        expect.arrayContaining(['exec', 'sid-123']),
-        expect.objectContaining({}),
-      );
+      expect(adapter.exec).toHaveBeenCalledTimes(1);
+      const [cmd, args, opts] = (adapter.exec as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(cmd).toBe('agentsh');
+      expect(args).toEqual([
+        'exec',
+        '--output',
+        'json',
+        'sid-123',
+        '--json',
+        expect.any(String),
+      ]);
+      expect(opts).toEqual(expect.objectContaining({ env: undefined }));
+
+      const jsonIndex = args.indexOf('--json');
+      const req = JSON.parse(args[jsonIndex + 1]);
+      expect(req).toEqual({
+        command: 'tee',
+        args: ['/workspace/test.txt'],
+        stdin: 'hello',
+        include_events: 'summary',
+      });
     });
 
     it('returns failure on policy denial', async () => {
