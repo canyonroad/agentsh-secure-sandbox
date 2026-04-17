@@ -7,26 +7,126 @@ import type {
 import { RuntimeError } from './errors.js';
 import { getTraceparent } from './traceparent.js';
 
+interface ExecEnvelope {
+  result?: {
+    exit_code?: number;
+    stdout?: string;
+    stderr?: string;
+    error?: {
+      code?: string;
+      message?: string;
+      policy_rule?: string;
+    };
+  };
+}
+
+const WRAP_NOISE_PREFIXES = [
+  'agentsh: FUSE workspace mount:',
+  'agentsh: LLM proxy:',
+  'agentsh: agent ',
+  'signal filter: load seccomp filter:',
+  'yama: not active, skipping PR_SET_PTRACER',
+];
+
 /** Build env object with TRACEPARENT if an OTEL span is active. */
 async function traceEnv(): Promise<Record<string, string> | undefined> {
   const tp = await getTraceparent();
   return tp ? { TRACEPARENT: tp } : undefined;
 }
 
+function parseExecEnvelope(raw: ExecResult): ExecEnvelope | null {
+  try {
+    return JSON.parse(raw.stdout) as ExecEnvelope;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse the JSON envelope from `agentsh exec --output json`. */
 function parseExecJson(raw: ExecResult): ExecResult {
-  try {
-    const json = JSON.parse(raw.stdout);
+  const json = parseExecEnvelope(raw);
+  if (json) {
     const result = json.result ?? {};
     return {
       exitCode: result.exit_code ?? raw.exitCode,
       stdout: result.stdout ?? '',
       stderr: result.stderr ?? result.error?.message ?? '',
     };
-  } catch {
-    // If not valid JSON, return as-is (e.g. mock adapters)
-    return raw;
   }
+
+  // If not valid JSON, return as-is (e.g. mock adapters)
+  return raw;
+}
+
+function isOpaqueShellPolicyDeny(raw: ExecResult): boolean {
+  const json = parseExecEnvelope(raw);
+  const result = json?.result;
+  return (
+    (result?.exit_code ?? raw.exitCode) === 126
+    && result?.error?.code === 'E_POLICY_DENIED'
+    && result?.error?.policy_rule === 'shellc-opaque-script'
+  );
+}
+
+function sanitizeWrapStream(text: string): string {
+  if (!text) {
+    return text;
+  }
+
+  let normalized = text;
+  for (const marker of WRAP_NOISE_PREFIXES) {
+    normalized = normalized.replaceAll(marker, `\n${marker}`);
+  }
+
+  return normalized
+    .split('\n')
+    .filter((line) => line && !WRAP_NOISE_PREFIXES.some((prefix) => line.startsWith(prefix))
+      && !/^\d{4}\/\d{2}\/\d{2} .*ERROR wrap: failed to receive notify fd from wrapper/.test(line))
+    .join('\n');
+}
+
+function sanitizeWrapResult(result: ExecResult): ExecResult {
+  return {
+    ...result,
+    stdout: sanitizeWrapStream(result.stdout),
+    stderr: sanitizeWrapStream(result.stderr),
+  };
+}
+
+async function runExecJson(
+  adapter: SandboxAdapter,
+  sessionId: string,
+  request: {
+    command: string;
+    args?: string[];
+    stdin?: string;
+    include_events?: 'all' | 'summary' | 'blocked' | 'none';
+  },
+  opts?: {
+    cwd?: string;
+    env?: Record<string, string>;
+  },
+): Promise<ExecResult> {
+  const result = await adapter.exec(
+    'agentsh',
+    [
+      'exec',
+      '--output',
+      'json',
+      sessionId,
+      '--json',
+      JSON.stringify(request),
+    ],
+    opts,
+  );
+  if (isTransportFailure(result)) {
+    throw new RuntimeError({
+      sessionId,
+      command: `${request.command} ${request.args?.join(' ') ?? ''}`.trim(),
+      stderr: result.stderr,
+    });
+  }
+  return parseExecJson(result);
 }
 
 export function createSecuredSandbox(
@@ -130,31 +230,41 @@ function createAgentshSandbox(
           stderr: result.stderr,
         });
       }
+      if (isOpaqueShellPolicyDeny(result)) {
+        const wrapped = await adapter.exec(
+          'agentsh',
+          [
+            'wrap',
+            '--session',
+            sessionId,
+            '--report=false',
+            '--',
+            'bash',
+            '-c',
+            command,
+          ],
+          execOpts,
+        );
+        if (isTransportFailure(wrapped)) {
+          throw new RuntimeError({
+            sessionId,
+            command,
+            stderr: wrapped.stderr,
+          });
+        }
+        return sanitizeWrapResult(wrapped);
+      }
       return parseExecJson(result);
     },
 
     async writeFile(path, content) {
-      const b64 = Buffer.from(content, 'utf-8').toString('base64');
-      const args = [
-        'exec',
-        sessionId,
-        '--',
-        'sh',
-        '-c',
-        'printf "%s" "$1" | base64 -d > "$2"',
-        '_',
-        b64,
-        path,
-      ];
       const env = await traceEnv();
-      const result = await adapter.exec('agentsh', args, { env });
-      if (isTransportFailure(result)) {
-        throw new RuntimeError({
-          sessionId,
-          command: `writeFile ${path}`,
-          stderr: result.stderr,
-        });
-      }
+      const result = await runExecJson(adapter, sessionId, {
+        command: 'tee',
+        args: [path],
+        stdin: content,
+        include_events: 'summary',
+      }, { env });
       if (result.exitCode !== 0) {
         return {
           success: false as const,
@@ -166,16 +276,12 @@ function createAgentshSandbox(
     },
 
     async readFile(path) {
-      const args = ['exec', sessionId, '--', 'cat', path];
       const env = await traceEnv();
-      const result = await adapter.exec('agentsh', args, { env });
-      if (isTransportFailure(result)) {
-        throw new RuntimeError({
-          sessionId,
-          command: `readFile ${path}`,
-          stderr: result.stderr,
-        });
-      }
+      const result = await runExecJson(adapter, sessionId, {
+        command: 'cat',
+        args: [path],
+        include_events: 'summary',
+      }, { env });
       if (result.exitCode !== 0) {
         return {
           success: false as const,

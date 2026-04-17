@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { secureSandbox } from './api.js';
 import type { SandboxAdapter } from './core/types.js';
+import { CHECKSUMS, PINNED_VERSION } from './core/integrity.js';
 
 // ─── Full mock adapter for end-to-end provisioning ──────────
 
@@ -14,8 +15,7 @@ function createFullMockAdapter(): SandboxAdapter {
         return { stdout: 'x86_64', stderr: '', exitCode: 0 };
       if (full.includes('sha256sum'))
         return {
-          stdout:
-            'da21c4009af236cd51d07649d3c2d31d947a8aa52933e35ea780dbbfa328263f',
+          stdout: CHECKSUMS[PINNED_VERSION].linux_amd64,
           stderr: '',
           exitCode: 0,
         };

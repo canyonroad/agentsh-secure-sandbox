@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { provision } from './provision.js';
 import type { SandboxAdapter, ExecResult } from './types.js';
 import { ProvisioningError, IntegrityError } from './errors.js';
-import { PINNED_VERSION } from './integrity.js';
+import { CHECKSUMS, PINNED_VERSION } from './integrity.js';
 
 // ─── Mock adapter helper ──────────────────────────────────────
 
@@ -18,9 +18,7 @@ function createMockAdapter(
     uname: ok('x86_64'),
     curl: ok(),
     'tar xz': ok(),
-    sha256sum: ok(
-      'da21c4009af236cd51d07649d3c2d31d947a8aa52933e35ea780dbbfa328263f',
-    ),
+    sha256sum: ok(CHECKSUMS[PINNED_VERSION].linux_amd64),
     install: ok(),
     'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'full' }), exitCode: 0 },
     'agentsh shim': ok(),
@@ -246,9 +244,7 @@ describe('provision', () => {
   it('maps uname aarch64 to linux_arm64', async () => {
     const adapter = createMockAdapter({
       uname: ok('aarch64'),
-      sha256sum: ok(
-        '52f50f5bb12f8730e832f3bf683a44178eb1db0d9b49b9ddc64740e41b0963fd',
-      ),
+      sha256sum: ok(CHECKSUMS[PINNED_VERSION].linux_arm64),
     });
     const result = await provision(adapter, {});
     expect(result.sessionId).toBe('test-session-123');
