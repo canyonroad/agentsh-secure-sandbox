@@ -222,6 +222,30 @@ const sandbox = await secureSandbox(vercel(raw), { policy });
 
 See [docs/api.md](docs/api.md) for `secureSandbox()` config options, security modes, custom adapters, and testing mocks.
 
+## Testing
+
+Run the unit suite and the shared provider-backed Vitest suite with:
+
+```bash
+npm test
+npm run test:e2e
+```
+
+The shared `test:e2e` suite covers Vercel, Cloudflare, Blaxel, E2B, and Daytona. Provider-specific live runners are available for the remaining backends:
+
+```bash
+npm run test:e2e:runloop
+npm run test:e2e:exe
+npm run test:e2e:freestyle
+npm run test:e2e:modal
+npm run test:e2e:sprites
+```
+
+All live runners load credentials from `.env.e2e`.
+
+- `test:e2e:modal` requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. The runner uses `MODAL_PYTHON` when set, otherwise it auto-detects `.venv-modal/bin/python3` before falling back to `python3`.
+- `test:e2e:sprites` requires `SPRITES_TOKEN` or `FLY_API_TOKEN`. If `SPRITES_NAME` is missing or stale, the runner can auto-create and delete a temporary sprite when `FLY_API_TOKEN` and `SPRITES_ORG` are set.
+
 ## Threat Intelligence
 
 Out of the box, `secure-sandbox` blocks connections to known-malicious domains using [URLhaus](https://urlhaus.abuse.ch/) (malware distribution) and [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) (active phishing). Package registries are allowlisted so they're never blocked.

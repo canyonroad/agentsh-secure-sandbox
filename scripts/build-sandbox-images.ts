@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../.env.e2e') });
 
-const AGENTSH_VERSION = '0.18.2';
+const AGENTSH_VERSION = '0.18.3';
 
 const provider = process.argv.find(a => a.startsWith('--provider='))?.split('=')[1]
   ?? process.argv[process.argv.indexOf('--provider') + 1]

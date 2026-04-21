@@ -205,11 +205,11 @@ if (secured) {
     assertEqual(result.stdout.trim(), '200');
   });
 
-  await test('blocks curl to unlisted domain', async () => {
+  await test('blocks network to unauthorized host', async () => {
     const result = await secured!.exec(
-      'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 https://example.com 2>&1',
+      'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 https://evil.example.com 2>&1',
     );
-    assert(result.stdout.trim() !== '200', 'expected example.com to be blocked');
+    assert(result.stdout.trim() !== '200', 'expected evil.example.com to be blocked');
   });
 }
 
