@@ -5,9 +5,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends libseccomp2 fuse3 curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Pre-install agentsh v0.18.2
-ARG AGENTSH_VERSION=0.18.2
-RUN echo "agentsh checksum: 5b277f4565b8beecee1011c7683f58b51ac25ae8cc7c7d2e1f3f7433bdd3b825" && \
+# Pre-install agentsh v0.18.3
+ARG AGENTSH_VERSION=0.18.3
+RUN echo "agentsh checksum: 07612c7062e843d0375519c08ac0c590cba99c990c0350ee4bade1fca34f0ddd" && \
     curl -fsSL "https://github.com/canyonroad/agentsh/releases/download/v${AGENTSH_VERSION}/agentsh_${AGENTSH_VERSION}_linux_amd64.tar.gz" \
       -o /tmp/agentsh.tar.gz && \
     tar xz -C /tmp/ -f /tmp/agentsh.tar.gz && \

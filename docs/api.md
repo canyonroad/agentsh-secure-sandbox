@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.18.2',            // agentsh binary version
+  agentshVersion: '0.18.3',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -647,7 +647,7 @@ Bakes agentsh into a Freestyle `VmSpec` by adding apt deps, install/startup scri
 
 ```typescript
 const spec = configureFreestyleSpec(new VmSpec().snapshot(), {
-  agentshVersion: '0.18.2',          // optional, defaults to library-pinned version
+  agentshVersion: '0.18.3',          // optional, defaults to library-pinned version
   policyYaml: customPolicyYaml,      // optional, defaults to freestyleDefaults() policy
   configYaml: customServerConfigYaml, // optional, defaults to freestyleDefaults() server config
 });
@@ -714,3 +714,21 @@ expect(result.stdout).toBe('hello\n');
 | `writeFileResults` | `WriteFileResult[]` | `[]` | Responses to return from `writeFile()` |
 | `securityMode` | `SecurityMode` | `'full'` | The `securityMode` property value |
 | `sessionId` | `string` | Random UUID | The `sessionId` property value |
+
+### Live E2E Runners
+
+The repository also ships provider-backed end-to-end runners under `src/e2e/`:
+
+```bash
+npm run test:e2e
+npm run test:e2e:runloop
+npm run test:e2e:exe
+npm run test:e2e:freestyle
+npm run test:e2e:modal
+npm run test:e2e:sprites
+```
+
+`npm run test:e2e` covers the shared Vitest matrix for Vercel, Cloudflare, Blaxel, E2B, and Daytona. The provider-specific runners load credentials from `.env.e2e`.
+
+- `test:e2e:modal` requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. The runner uses `MODAL_PYTHON` when set, otherwise it auto-detects `.venv-modal/bin/python3` before falling back to `python3`.
+- `test:e2e:sprites` requires `SPRITES_TOKEN` or `FLY_API_TOKEN`. If `SPRITES_NAME` is missing or stale, the runner can auto-create and delete a temporary sprite when `FLY_API_TOKEN` and `SPRITES_ORG` are set.

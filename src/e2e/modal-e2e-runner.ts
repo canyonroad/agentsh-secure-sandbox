@@ -6,13 +6,15 @@
  * Modal's SDK is Python-first and has no official JS client.
  *
  * Prerequisites:
- *   - Python 3.11+ with `modal` package installed (`pip install modal`)
+ *   - Python 3.11+ with `modal` package installed
  *   - MODAL_TOKEN_ID and MODAL_TOKEN_SECRET environment variables set
+ *   - Optional: set MODAL_PYTHON or create `.venv-modal` in repo root
  *
  * Run: npx tsx src/e2e/modal-e2e-runner.ts
  * Or:  npm run test:e2e:modal
  */
 import { config } from 'dotenv';
+import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -53,6 +55,11 @@ function assertEqual(actual: unknown, expected: unknown) {
 
 const MODAL_TOKEN_ID = process.env.MODAL_TOKEN_ID;
 const MODAL_TOKEN_SECRET = process.env.MODAL_TOKEN_SECRET;
+const MODAL_PYTHON = (() => {
+  if (process.env.MODAL_PYTHON) return process.env.MODAL_PYTHON;
+  const venvPython = resolve(__dirname, '../../.venv-modal/bin/python3');
+  return existsSync(venvPython) ? venvPython : 'python3';
+})();
 
 if (!MODAL_TOKEN_ID || !MODAL_TOKEN_SECRET) {
   console.log('⊘ Modal E2E: skipped (missing MODAL_TOKEN_ID or MODAL_TOKEN_SECRET)');
@@ -61,7 +68,7 @@ if (!MODAL_TOKEN_ID || !MODAL_TOKEN_SECRET) {
 
 // Check Python + modal SDK availability
 try {
-  const check = spawn('python3', ['-c', 'import modal; print(modal.__version__)'], {
+  const check = spawn(MODAL_PYTHON, ['-c', 'import modal; print(modal.__version__)'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET },
   });
@@ -75,7 +82,7 @@ try {
   });
   console.log(`  → modal SDK version: ${version}`);
 } catch {
-  console.log('⊘ Modal E2E: skipped (Python modal package not available)');
+  console.log(`⊘ Modal E2E: skipped (Modal Python package not available via ${MODAL_PYTHON})`);
   process.exit(0);
 }
 
@@ -149,7 +156,7 @@ for line in sys.stdin:
 
 console.log('  → creating Modal sandbox...');
 
-const bridge = spawn('python3', ['-c', BRIDGE_SCRIPT], {
+const bridge = spawn(MODAL_PYTHON, ['-c', BRIDGE_SCRIPT], {
   stdio: ['pipe', 'pipe', 'pipe'],
   env: { ...process.env, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET },
 });

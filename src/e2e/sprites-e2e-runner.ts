@@ -54,9 +54,10 @@ const SPRITES_TOKEN = process.env.SPRITES_TOKEN;
 const SPRITES_ORG = process.env.SPRITES_ORG;
 const SPRITES_NAME = process.env.SPRITES_NAME;
 const FLY_API_TOKEN = process.env.FLY_API_TOKEN;
+const CAN_CREATE_SPRITE = Boolean(FLY_API_TOKEN && SPRITES_ORG);
 
-if (!SPRITES_NAME || !(SPRITES_TOKEN || FLY_API_TOKEN)) {
-  console.log('⊘ Sprites E2E: skipped (missing SPRITES_NAME or SPRITES_TOKEN/FLY_API_TOKEN)');
+if (!(SPRITES_TOKEN || FLY_API_TOKEN)) {
+  console.log('⊘ Sprites E2E: skipped (missing SPRITES_TOKEN or FLY_API_TOKEN)');
   process.exit(0);
 }
 
@@ -76,11 +77,39 @@ if (!token) {
 }
 
 const client = new SpritesClient(token);
-const sprite = client.sprite(SPRITES_NAME!);
+let spriteName = SPRITES_NAME;
+let sprite = spriteName ? client.sprite(spriteName) : undefined;
+let createdSprite = false;
+
+if (spriteName) {
+  try {
+    sprite = await client.getSprite(spriteName);
+    console.log(`  → using configured sprite: ${spriteName}`);
+  } catch {
+    if (!CAN_CREATE_SPRITE) {
+      console.error(`  ✗ Configured sprite not found: ${spriteName}`);
+      console.error('    Provide a valid SPRITES_NAME or set FLY_API_TOKEN + SPRITES_ORG to auto-create one.');
+      process.exit(1);
+    }
+    console.log(`  → configured sprite not found: ${spriteName}`);
+    sprite = undefined;
+  }
+}
+
+if (!sprite) {
+  if (!CAN_CREATE_SPRITE) {
+    console.log('⊘ Sprites E2E: skipped (set SPRITES_NAME or provide FLY_API_TOKEN + SPRITES_ORG for auto-create)');
+    process.exit(0);
+  }
+  spriteName = `agentsh-sprites-e2e-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  console.log(`  → creating sprite: ${spriteName}...`);
+  sprite = await client.createSprite(spriteName);
+  createdSprite = true;
+}
 
 // Quick connectivity check
 console.log('  → connecting to sprite...');
-const ping = await sprite.exec('echo pong');
+const ping = await sprite.execFile('sh', ['-c', 'echo pong']);
 assert(String(ping.stdout).trim() === 'pong', 'sprite not reachable');
 console.log('  → connected');
 
@@ -171,6 +200,11 @@ await test('detached exec returns immediately', async () => {
 
 // Clean up test files
 await adapter.exec('rm', ['-f', '/tmp/sprites-e2e-test.txt', '/tmp/sprites-e2e-read.txt', '/tmp/sprites-e2e-special.txt', '/tmp/sprites-e2e-binary.txt']);
+
+if (createdSprite) {
+  console.log(`  → deleting sprite: ${spriteName}...`);
+  await sprite.delete();
+}
 
 // ── Summary ──────────────────────────────────────────────────
 
