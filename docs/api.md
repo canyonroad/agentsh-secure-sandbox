@@ -10,7 +10,7 @@ import { secureSandbox } from '@agentsh/secure-sandbox';
 const sandbox = await secureSandbox(adapter, {
   policy: agentDefault(),              // Policy to enforce (default: agentDefault())
   installStrategy: 'download',         // 'download' | 'upload' | 'preinstalled' | 'running'
-  agentshVersion: '0.18.3',            // agentsh binary version
+  agentshVersion: '0.19.0',            // agentsh binary version
   minimumSecurityMode: 'landlock',     // Fail if kernel can't enforce this level
   threatFeeds: true,                   // Enable/disable/customize threat intelligence feeds
   packageChecks: {},                   // Enable package install security checks
@@ -412,7 +412,7 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `allowDegraded` | Start sandbox even if FUSE/seccomp fail (useful for gVisor) |
 | `fuse` | FUSE enable flag, deferred mode, marker file, and enable command |
 | `networkIntercept` | Network intercept mode and proxy address |
-| `seccompDetails` | Execve filtering and file monitor |
+| `seccompDetails` | Execve filtering, file monitor, and socket family blocking (see [Seccomp Details Config](#seccomp-details-config)) |
 | `cgroups` | Cgroup isolation |
 | `unixSockets` | Unix socket support |
 | `ptrace` | Ptrace-based syscall interception (see [Ptrace Config](#ptrace-config)) |
@@ -424,6 +424,48 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `metrics` | Prometheus metrics endpoint |
 | `health` | Health and readiness check paths |
 | `development` | Development mode flags |
+
+### Seccomp Details Config
+
+The `seccompDetails` section configures seccomp-bpf interception. Setting any subfield implicitly enables `sandbox.seccomp.enabled` (unless `ptrace.enabled` is true, in which case seccomp stays disabled and ptrace handles equivalent enforcement).
+
+```typescript
+serverConfig: {
+  seccompDetails: {
+    execve: true,                          // Intercept execve/execveat for command policy
+    fileMonitor: {
+      enabled: true,
+      enforceWithoutFuse: false,           // Enforce file policy via seccomp even without FUSE
+      interceptMetadata: false,            // Intercept stat/access/etc.
+      openatEmulation: false,              // Rewrite openat for redirect rules
+      blockIoUring: false,                 // Block io_uring (bypass channel for file syscalls)
+    },
+    blockedSocketFamilies: [               // Per-AF_* family blocking on socket(2)/socketpair(2)
+      { family: 'AF_VSOCK', action: 'log_and_kill' },
+      { family: 'AF_ALG' },                // action defaults to 'errno' (returns EAFNOSUPPORT)
+    ],
+  },
+}
+```
+
+**Socket family blocking** (agentsh v0.19.0+):
+
+When `blockedSocketFamilies` is **omitted**, agentsh applies a recommended-default list of 12 niche AF_* families at `action: errno`: `AF_ALG`, `AF_VSOCK`, `AF_RDS`, `AF_TIPC`, `AF_KCM`, and the legacy `AF_X25`/`AF_AX25`/`AF_NETROM`/`AF_ROSE`/`AF_DECnet`/`AF_APPLETALK`/`AF_IPX`. This mitigates the recurring CVE class where `socket(AF_<niche>, ...)` is the kernel attack entry point (see [copy.fail](https://copy.fail/#mitigation) for the AF_ALG case).
+
+| Caller passes | Behavior |
+|---|---|
+| field omitted | agentsh applies the 12-family default list at `errno` |
+| `blockedSocketFamilies: []` | opts out of all family blocking |
+| non-empty list | overrides the defaults with the supplied entries |
+
+| `action` | Effect | Audit event |
+|---|---|---|
+| `errno` (default) | Returns `EAFNOSUPPORT` (97) to the caller | none |
+| `kill` | Process killed by `SCMP_ACT_KILL_PROCESS` | none |
+| `log` | Returns `EAFNOSUPPORT` and emits audit event | `seccomp_socket_family_blocked` (outcome: `denied`) |
+| `log_and_kill` | Process killed by `SIGKILL` and emits audit event | `seccomp_socket_family_blocked` (outcome: `killed`) |
+
+`family` accepts either a name (`'AF_VSOCK'`) or a numeric string (`'40'`). Names resolve via a built-in table; numbers in `[0, 64)` are accepted as a fallback. Unknown names and out-of-range numbers are rejected at config-load time. When `ptrace.enabled` is true, the ptrace fallback engine handles family blocking and emits identical audit events. See [agentsh seccomp docs](https://github.com/canyonroad/agentsh/blob/main/docs/seccomp.md#socket-family-blocking) for the canonical reference.
 
 ### Ptrace Config
 
@@ -647,7 +689,7 @@ Bakes agentsh into a Freestyle `VmSpec` by adding apt deps, install/startup scri
 
 ```typescript
 const spec = configureFreestyleSpec(new VmSpec().snapshot(), {
-  agentshVersion: '0.18.3',          // optional, defaults to library-pinned version
+  agentshVersion: '0.19.0',          // optional, defaults to library-pinned version
   policyYaml: customPolicyYaml,      // optional, defaults to freestyleDefaults() policy
   configYaml: customServerConfigYaml, // optional, defaults to freestyleDefaults() server config
 });
