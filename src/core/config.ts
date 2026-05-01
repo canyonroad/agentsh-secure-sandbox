@@ -41,7 +41,14 @@ export interface ServerConfigOpts {
   allowDegraded?: boolean;
   fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
-  seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean } };
+  seccompDetails?: {
+    execve?: boolean;
+    fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
+    blockedSocketFamilies?: Array<{
+      family: string;
+      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+    }>;
+  };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
   ptrace?: {
