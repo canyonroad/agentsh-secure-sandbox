@@ -318,6 +318,14 @@ describe('generateServerConfig — extended fields', () => {
     ]);
   });
 
+  it('omits blocked_socket_families when field is unset (lets agentsh apply defaults)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toBeUndefined();
+  });
+
   it('generates cgroups section', () => {
     const result = generateServerConfig({ cgroups: { enabled: true } });
     const parsed = yaml.load(result) as any;
