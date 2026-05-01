@@ -300,6 +300,24 @@ describe('generateServerConfig — extended fields', () => {
     expect(Array.isArray(parsed.sandbox.seccomp.blocked_socket_families)).toBe(true);
   });
 
+  it('emits populated blocked_socket_families with optional action per entry', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        blockedSocketFamilies: [
+          { family: 'AF_VSOCK', action: 'log_and_kill' },
+          { family: 'AF_ALG' },
+          { family: '38', action: 'errno' },
+        ],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([
+      { family: 'AF_VSOCK', action: 'log_and_kill' },
+      { family: 'AF_ALG' },
+      { family: '38', action: 'errno' },
+    ]);
+  });
+
   it('generates cgroups section', () => {
     const result = generateServerConfig({ cgroups: { enabled: true } });
     const parsed = yaml.load(result) as any;
