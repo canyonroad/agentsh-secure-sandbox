@@ -5,9 +5,21 @@ import { shellEscape, envPrefix } from '../core/shell.js';
 export function sprites(sprite: any): SandboxAdapter {
   // sprite.exec() does a naive split(/\s+/) — no shell parsing.
   // Use sprite.execFile('sh', ['-c', cmd]) for shell features (env, pipes, quotes).
-  function sh(cmd: string, opts?: Record<string, unknown>) {
-    if (opts) return sprite.execFile('sh', ['-c', cmd], opts);
-    return sprite.execFile('sh', ['-c', cmd]);
+  // The Sprites SDK occasionally surfaces a transient `WebSocket error` on the
+  // first message after the connection settles; one retry clears it without
+  // observable impact on the green path.
+  async function sh(cmd: string, opts?: Record<string, unknown>) {
+    const invoke = () =>
+      opts ? sprite.execFile('sh', ['-c', cmd], opts) : sprite.execFile('sh', ['-c', cmd]);
+    try {
+      return await invoke();
+    } catch (err: any) {
+      if (typeof err?.message === 'string' && err.message.includes('WebSocket')) {
+        await new Promise(res => setTimeout(res, 250));
+        return await invoke();
+      }
+      throw err;
+    }
   }
 
   return {

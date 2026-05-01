@@ -41,7 +41,14 @@ export interface ServerConfigOpts {
   allowDegraded?: boolean;
   fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
-  seccompDetails?: { execve?: boolean; fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean } };
+  seccompDetails?: {
+    execve?: boolean;
+    fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
+    blockedSocketFamilies?: Array<{
+      family: string;
+      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+    }>;
+  };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
   ptrace?: {
@@ -313,6 +320,12 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(opts.seccompDetails.fileMonitor.openatEmulation !== undefined && { openat_emulation: opts.seccompDetails.fileMonitor.openatEmulation }),
         ...(opts.seccompDetails.fileMonitor.blockIoUring !== undefined && { block_io_uring: opts.seccompDetails.fileMonitor.blockIoUring }),
       };
+    }
+    if (opts.seccompDetails.blockedSocketFamilies !== undefined) {
+      sec.blocked_socket_families = opts.seccompDetails.blockedSocketFamilies.map(e => ({
+        family: e.family,
+        ...(e.action !== undefined && { action: e.action }),
+      }));
     }
   }
 

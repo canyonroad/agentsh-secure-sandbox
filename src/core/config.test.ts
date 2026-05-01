@@ -290,6 +290,67 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.file_monitor).toEqual({ enabled: true, enforce_without_fuse: false });
   });
 
+  it('emits blocked_socket_families: [] for explicit opt-out', () => {
+    const result = generateServerConfig({
+      seccompDetails: { blockedSocketFamilies: [] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([]);
+    expect(Array.isArray(parsed.sandbox.seccomp.blocked_socket_families)).toBe(true);
+  });
+
+  it('emits populated blocked_socket_families with optional action per entry', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        blockedSocketFamilies: [
+          { family: 'AF_VSOCK', action: 'log_and_kill' },
+          { family: 'AF_ALG' },
+          { family: '38', action: 'errno' },
+        ],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([
+      { family: 'AF_VSOCK', action: 'log_and_kill' },
+      { family: 'AF_ALG' },
+      { family: '38', action: 'errno' },
+    ]);
+  });
+
+  it('omits blocked_socket_families when field is unset (lets agentsh apply defaults)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toBeUndefined();
+  });
+
+  it('blockedSocketFamilies alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        blockedSocketFamilies: [{ family: 'AF_VSOCK' }],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([{ family: 'AF_VSOCK' }]);
+  });
+
+  it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
+    const result = generateServerConfig({
+      ptrace: { enabled: true },
+      seccompDetails: {
+        blockedSocketFamilies: [{ family: 'AF_VSOCK', action: 'log' }],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(false);
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([
+      { family: 'AF_VSOCK', action: 'log' },
+    ]);
+  });
+
   it('generates cgroups section', () => {
     const result = generateServerConfig({ cgroups: { enabled: true } });
     const parsed = yaml.load(result) as any;

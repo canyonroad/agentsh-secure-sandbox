@@ -5,7 +5,7 @@ import type { PolicyDefinition } from '../policies/schema.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 
-const AGENTSH_VERSION = '0.18.3';
+const AGENTSH_VERSION = '0.19.0';
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
 
