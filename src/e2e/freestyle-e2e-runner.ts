@@ -100,7 +100,7 @@ if (!ready) {
     const logs = await vm.exec({ command: 'tail -50 /var/log/agentsh/server.log', timeoutMs: 5000 });
     console.error(`    server log:\n${logs?.stdout ?? ''}`);
   } catch {}
-  try { await vm.stop(); } catch {}
+  try { await fsClient.vms.delete({ vmId: vm.vmId }); } catch {}
   process.exit(1);
 }
 console.log('  → agentsh healthy');
@@ -215,12 +215,12 @@ if (secured) {
 
 // ── Cleanup ──────────────────────────────────────────────────
 
-console.log('\n  → stopping Freestyle VM...');
+console.log('\n  → deleting Freestyle VM...');
 try {
-  await vm.stop();
-  console.log('  → VM stopped');
+  await fsClient.vms.delete({ vmId: vm.vmId });
+  console.log('  → VM deleted');
 } catch (err: any) {
-  console.log(`  → stop warning: ${err.message}`);
+  console.log(`  → delete warning: ${err.message}`);
 }
 
 // ── Summary ──────────────────────────────────────────────────
