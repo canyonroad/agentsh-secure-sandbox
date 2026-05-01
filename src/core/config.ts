@@ -321,6 +321,12 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(opts.seccompDetails.fileMonitor.blockIoUring !== undefined && { block_io_uring: opts.seccompDetails.fileMonitor.blockIoUring }),
       };
     }
+    if (opts.seccompDetails.blockedSocketFamilies !== undefined) {
+      sec.blocked_socket_families = opts.seccompDetails.blockedSocketFamilies.map(e => ({
+        family: e.family,
+        ...(e.action !== undefined && { action: e.action }),
+      }));
+    }
   }
 
   // Cgroups

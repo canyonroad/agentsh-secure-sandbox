@@ -290,6 +290,16 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.file_monitor).toEqual({ enabled: true, enforce_without_fuse: false });
   });
 
+  it('emits blocked_socket_families: [] for explicit opt-out', () => {
+    const result = generateServerConfig({
+      seccompDetails: { blockedSocketFamilies: [] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([]);
+    expect(Array.isArray(parsed.sandbox.seccomp.blocked_socket_families)).toBe(true);
+  });
+
   it('generates cgroups section', () => {
     const result = generateServerConfig({ cgroups: { enabled: true } });
     const parsed = yaml.load(result) as any;
