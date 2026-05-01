@@ -136,6 +136,8 @@ Different platforms use different kernel mechanisms to achieve these protections
 
 > **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
 >
+> **Socket family blocking (v0.19.0):** When seccomp is enabled, agentsh blocks 12 niche `AF_*` socket families on `socket(2)`/`socketpair(2)` by default at `EAFNOSUPPORT` — `AF_ALG`, `AF_VSOCK`, `AF_RDS`, `AF_TIPC`, `AF_KCM`, and the legacy `AF_X25`/`AF_AX25`/`AF_NETROM`/`AF_ROSE`/`AF_DECnet`/`AF_APPLETALK`/`AF_IPX` set. Override via `serverConfig: { seccompDetails: { blockedSocketFamilies: [{ family: 'AF_VSOCK', action: 'log_and_kill' }] } }`, or opt out entirely with `blockedSocketFamilies: []`. See [agentsh seccomp docs](https://github.com/canyonroad/agentsh/blob/main/docs/seccomp.md#socket-family-blocking) for the full list and audit event shape.
+>
 > **Modal:** gVisor doesn't support seccomp user-notify or Landlock. ptrace provides equivalent enforcement by intercepting syscalls via `PTRACE_SEIZE`.
 >
 > **exe.dev:** Full kernel capabilities — all enforcement layers active (ptrace + seccomp + Landlock + FUSE + cgroups). Persistent VMs accessed via SSH; `stop()` is a no-op.
