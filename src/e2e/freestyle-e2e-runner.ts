@@ -109,6 +109,9 @@ console.log('  → agentsh healthy');
 
 const adapter = freestyle(vm);
 
+const versionResult = await adapter.exec('agentsh', ['--version']);
+console.log(`  → agentsh binary: ${(versionResult.stdout || versionResult.stderr).trim()}`);
+
 await test('adapter: exec runs a simple command', async () => {
   const result = await adapter.exec('echo', ['hello']);
   assertEqual(result.exitCode, 0);
