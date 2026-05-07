@@ -4,8 +4,10 @@ import { generateServerConfig } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { CHECKSUMS } from '../core/integrity.js';
 
-const AGENTSH_VERSION = '0.19.0';
+const AGENTSH_VERSION = '0.19.2';
+const AGENTSH_SHA256 = CHECKSUMS[AGENTSH_VERSION].linux_amd64;
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
 
@@ -13,8 +15,10 @@ const INSTALL_SCRIPT = [
   '#!/bin/bash',
   'set -eux',
   `AGENTSH_VERSION="${AGENTSH_VERSION}"`,
+  `AGENTSH_SHA256="${AGENTSH_SHA256}"`,
   'URL="https://github.com/canyonroad/agentsh/releases/download/v${AGENTSH_VERSION}/agentsh_${AGENTSH_VERSION}_linux_amd64.tar.gz"',
   'curl -fsSL "${URL}" -o /tmp/agentsh.tar.gz',
+  'echo "${AGENTSH_SHA256}  /tmp/agentsh.tar.gz" | sha256sum -c -',
   'tar xz -C /tmp/ -f /tmp/agentsh.tar.gz',
   'install -m 0755 /tmp/agentsh /usr/local/bin/agentsh',
   'install -m 0755 /tmp/agentsh-shell-shim /usr/bin/agentsh-shell-shim',

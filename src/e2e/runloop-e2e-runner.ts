@@ -195,6 +195,8 @@ if (secured) {
   });
 
   await test('exec runs a simple command', async () => {
+    const versionResult = await adapter.exec('agentsh', ['--version']);
+    console.log(`    agentsh binary: ${(versionResult.stdout || versionResult.stderr).trim()}`);
     const result = await secured!.exec('echo hello');
     assertEqual(result.exitCode, 0);
     assertEqual(result.stdout.trim(), 'hello');
