@@ -1,6 +1,8 @@
 import yaml from 'js-yaml';
 import type { ThreatFeedsConfig, PackageChecksConfig, ProviderConfig } from './types.js';
 
+type SeccompAction = 'errno' | 'kill' | 'log' | 'log_and_kill';
+
 export interface ServerConfigOpts {
   watchtower?: string;
   realPaths?: boolean;
@@ -100,20 +102,20 @@ export interface ServerConfigOpts {
     fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
     blockedSocketFamilies?: Array<{
       family: string;
-      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+      action?: SeccompAction;
     }>;
     socketRules?: Array<{
       name: string;
       family: string;
       type?: string;
       protocol?: string;
-      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+      action?: SeccompAction;
     }>;
     syscalls?: {
       defaultAction?: 'allow' | 'block';
       block?: string[];
       allow?: string[];
-      onBlock?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+      onBlock?: SeccompAction;
     };
     mitigationSets?: string[];
     mitigationDirs?: string[];
@@ -235,6 +237,9 @@ function validateSeccompDetails(seccomp: NonNullable<ServerConfigOpts['seccompDe
     if (seccomp.syscalls.defaultAction === 'allow' && (!seccomp.syscalls.block || seccomp.syscalls.block.length === 0)) {
       throw new Error('seccompDetails.syscalls: defaultAction "allow" requires non-empty block list');
     }
+  }
+  if (seccomp.execve === false && seccomp.execveDetails && Object.values(seccomp.execveDetails).some(v => v !== undefined)) {
+    throw new Error('seccompDetails.execveDetails: cannot set sub-fields when execve is false (sub-fields would be silently ignored). Set execve: true or omit execve to use execveDetails.');
   }
 }
 

@@ -1075,6 +1075,24 @@ describe('generateServerConfig — extended fields', () => {
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.unix_sockets).toEqual({ enabled: true });
   });
+
+  it('throws when execve is false but execveDetails has any field set', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        execve: false,
+        execveDetails: { maxArgc: 64 },
+      },
+    })).toThrow(/execveDetails.*cannot set sub-fields when execve is false/);
+  });
+
+  it('does not throw when execve is false and execveDetails is empty/undefined', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { execve: false, execveDetails: {} },
+    })).not.toThrow();
+    expect(() => generateServerConfig({
+      seccompDetails: { execve: false },
+    })).not.toThrow();
+  });
 });
 
 describe('generateServerConfig — validation', () => {
