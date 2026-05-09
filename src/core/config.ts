@@ -55,6 +55,8 @@ export interface ServerConfigOpts {
       protocol?: string;
       action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
     }>;
+    mitigationSets?: string[];
+    mitigationDirs?: string[];
   };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
@@ -342,6 +344,12 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(r.protocol !== undefined && { protocol: r.protocol }),
         ...(r.action !== undefined && { action: r.action }),
       }));
+    }
+    if (opts.seccompDetails.mitigationSets !== undefined) {
+      sec.mitigation_sets = [...opts.seccompDetails.mitigationSets];
+    }
+    if (opts.seccompDetails.mitigationDirs !== undefined) {
+      sec.mitigation_dirs = [...opts.seccompDetails.mitigationDirs];
     }
   }
 

@@ -372,6 +372,34 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.enabled).toBe(true);
   });
 
+  it('emits mitigation_sets and mitigation_dirs as string arrays', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        mitigationSets: ['dirtyfrag-conservative'],
+        mitigationDirs: ['/etc/agentsh/mitigations'],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.mitigation_sets).toEqual(['dirtyfrag-conservative']);
+    expect(parsed.sandbox.seccomp.mitigation_dirs).toEqual(['/etc/agentsh/mitigations']);
+  });
+
+  it('omits mitigation_sets and mitigation_dirs when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.mitigation_sets).toBeUndefined();
+    expect(parsed.sandbox.seccomp.mitigation_dirs).toBeUndefined();
+  });
+
+  it('mitigationSets alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: { mitigationSets: ['dirtyfrag-conservative'] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
   it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
     const result = generateServerConfig({
       ptrace: { enabled: true },
