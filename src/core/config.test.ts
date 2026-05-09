@@ -379,6 +379,46 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.network.ebpf).toBeUndefined();
   });
 
+  it('emits network.rate_limits with global + per_domain', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        rateLimits: {
+          enabled: true,
+          globalRpm: 600,
+          globalBurst: 100,
+          perDomain: [
+            { domain: 'api.openai.com', rpm: 60, burst: 20 },
+            { domain: 'registry.npmjs.org', rpm: 300 },
+          ],
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toEqual({
+      enabled: true,
+      global_rpm: 600,
+      global_burst: 100,
+      per_domain: [
+        { domain: 'api.openai.com', rpm: 60, burst: 20 },
+        { domain: 'registry.npmjs.org', rpm: 300 },
+      ],
+    });
+  });
+
+  it('emits partial rate_limits (enabled only)', () => {
+    const result = generateServerConfig({
+      networkIntercept: { rateLimits: { enabled: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toEqual({ enabled: true });
+  });
+
+  it('omits rate_limits when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toBeUndefined();
+  });
+
   it('generates seccomp details with file_monitor', () => {
     const result = generateServerConfig({
       seccompDetails: { execve: true, fileMonitor: { enabled: true, enforceWithoutFuse: false } },

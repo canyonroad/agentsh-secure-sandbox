@@ -78,6 +78,12 @@ export interface ServerConfigOpts {
       dnsRefreshSeconds?: number;
       dnsMaxTtlSeconds?: number;
     };
+    rateLimits?: {
+      enabled?: boolean;
+      globalRpm?: number;
+      globalBurst?: number;
+      perDomain?: Array<{ domain: string; rpm?: number; burst?: number }>;
+    };
   };
   seccompDetails?: {
     mode?: 'enforce' | 'audit' | 'disabled';
@@ -434,6 +440,21 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(e.mapDefaultEntries !== undefined && { map_default_entries: e.mapDefaultEntries }),
         ...(e.dnsRefreshSeconds !== undefined && { dns_refresh_seconds: e.dnsRefreshSeconds }),
         ...(e.dnsMaxTtlSeconds !== undefined && { dns_max_ttl_seconds: e.dnsMaxTtlSeconds }),
+      };
+    }
+    if (opts.networkIntercept.rateLimits) {
+      const rl = opts.networkIntercept.rateLimits;
+      net.rate_limits = {
+        ...(rl.enabled !== undefined && { enabled: rl.enabled }),
+        ...(rl.globalRpm !== undefined && { global_rpm: rl.globalRpm }),
+        ...(rl.globalBurst !== undefined && { global_burst: rl.globalBurst }),
+        ...(rl.perDomain !== undefined && {
+          per_domain: rl.perDomain.map(d => ({
+            domain: d.domain,
+            ...(d.rpm !== undefined && { rpm: d.rpm }),
+            ...(d.burst !== undefined && { burst: d.burst }),
+          })),
+        }),
       };
     }
   }
