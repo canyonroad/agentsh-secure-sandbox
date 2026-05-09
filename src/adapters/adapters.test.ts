@@ -17,6 +17,7 @@ import { modalDefaults } from './modal.js';
 import { spritesDefaults } from './sprites.js';
 import { runloopDefaults } from './runloop.js';
 import { freestyleDefaults } from './freestyle.js';
+import { exeDefaults } from './exe.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
 import { shellEscape } from '../core/shell.js';
@@ -1089,6 +1090,16 @@ describe('provider defaults', () => {
       });
     });
   }
+
+  it.each([
+    ['spritesDefaults', spritesDefaults],
+    ['freestyleDefaults', freestyleDefaults],
+    ['runloopDefaults', runloopDefaults],
+    ['exeDefaults', exeDefaults],
+  ])('%s sets dirtyfrag-conservative mitigation by default', (_name, fn) => {
+    const defaults = fn();
+    expect(defaults.serverConfig?.seccompDetails?.mitigationSets).toEqual(['dirtyfrag-conservative']);
+  });
 
   it('vercelDefaults includes /vercel/sandbox paths', () => {
     const { policy } = vercelDefaults() as any;

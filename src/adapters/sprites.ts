@@ -1,6 +1,7 @@
 import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
 export function sprites(sprite: any): SandboxAdapter {
   // sprite.exec() does a naive split(/\s+/) — no shell parsing.
@@ -92,6 +93,7 @@ export function spritesDefaults(): Partial<SecureConfig> {
     seccompDetails: {
       execve: true,
       fileMonitor: { enabled: true, enforceWithoutFuse: true },
+      mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
     },
     cgroups: { enabled: true },
     unixSockets: { enabled: true },
