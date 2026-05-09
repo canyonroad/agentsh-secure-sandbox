@@ -56,7 +56,15 @@ export interface ServerConfigOpts {
       hashSmallFilesUnder?: string;
     };
   };
-  networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
+  networkIntercept?: {
+    enabled?: boolean;
+    proxyPort?: number;
+    dnsPort?: number;
+    interceptMode?: string;
+    proxyListenAddr?: string;
+    tlsInspection?: { enabled?: boolean; caCert?: string; caKey?: string };
+    transparent?: { enabled?: boolean; subnetBase?: string };
+  };
   seccompDetails?: {
     mode?: 'enforce' | 'audit' | 'disabled';
     unixSocket?: { enabled?: boolean; action?: 'enforce' | 'audit' };
@@ -379,8 +387,24 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   // Network intercept
   if (opts.networkIntercept) {
     const net = (config.sandbox as any).network;
+    if (opts.networkIntercept.enabled !== undefined) net.enabled = opts.networkIntercept.enabled;
+    if (opts.networkIntercept.proxyPort !== undefined) net.proxy_port = opts.networkIntercept.proxyPort;
+    if (opts.networkIntercept.dnsPort !== undefined) net.dns_port = opts.networkIntercept.dnsPort;
     if (opts.networkIntercept.interceptMode) net.intercept_mode = opts.networkIntercept.interceptMode;
     if (opts.networkIntercept.proxyListenAddr) net.proxy_listen_addr = opts.networkIntercept.proxyListenAddr;
+    if (opts.networkIntercept.tlsInspection) {
+      net.tls_inspection = {
+        ...(opts.networkIntercept.tlsInspection.enabled !== undefined && { enabled: opts.networkIntercept.tlsInspection.enabled }),
+        ...(opts.networkIntercept.tlsInspection.caCert !== undefined && { ca_cert: opts.networkIntercept.tlsInspection.caCert }),
+        ...(opts.networkIntercept.tlsInspection.caKey !== undefined && { ca_key: opts.networkIntercept.tlsInspection.caKey }),
+      };
+    }
+    if (opts.networkIntercept.transparent) {
+      net.transparent = {
+        ...(opts.networkIntercept.transparent.enabled !== undefined && { enabled: opts.networkIntercept.transparent.enabled }),
+        ...(opts.networkIntercept.transparent.subnetBase !== undefined && { subnet_base: opts.networkIntercept.transparent.subnetBase }),
+      };
+    }
   }
 
   // Seccomp details — providing seccompDetails implicitly enables seccomp

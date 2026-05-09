@@ -279,6 +279,56 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.network.proxy_listen_addr).toBe('127.0.0.1:8888');
   });
 
+  it('emits network.{enabled, proxy_port, dns_port}', () => {
+    const result = generateServerConfig({
+      networkIntercept: { enabled: true, proxyPort: 8080, dnsPort: 5353 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.enabled).toBe(true);
+    expect(parsed.sandbox.network.proxy_port).toBe(8080);
+    expect(parsed.sandbox.network.dns_port).toBe(5353);
+  });
+
+  it('emits tls_inspection sub-config', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        tlsInspection: {
+          enabled: true,
+          caCert: '/etc/agentsh/ca.crt',
+          caKey: '/etc/agentsh/ca.key',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.tls_inspection).toEqual({
+      enabled: true,
+      ca_cert: '/etc/agentsh/ca.crt',
+      ca_key: '/etc/agentsh/ca.key',
+    });
+  });
+
+  it('emits transparent sub-config', () => {
+    const result = generateServerConfig({
+      networkIntercept: { transparent: { enabled: true, subnetBase: '10.99.0.0/16' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.transparent).toEqual({
+      enabled: true,
+      subnet_base: '10.99.0.0/16',
+    });
+  });
+
+  it('omits new network sub-fields when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.tls_inspection).toBeUndefined();
+    expect(parsed.sandbox.network.transparent).toBeUndefined();
+    expect(parsed.sandbox.network.proxy_port).toBeUndefined();
+    expect(parsed.sandbox.network.dns_port).toBeUndefined();
+    // Default network.enabled is true from the default config init
+    expect(parsed.sandbox.network.enabled).toBe(true);
+  });
+
   it('generates seccomp details with file_monitor', () => {
     const result = generateServerConfig({
       seccompDetails: { execve: true, fileMonitor: { enabled: true, enforceWithoutFuse: false } },
