@@ -329,6 +329,56 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.network.enabled).toBe(true);
   });
 
+  it('emits network.ebpf with all fields', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        ebpf: {
+          enabled: true,
+          required: false,
+          resolveRdns: true,
+          enforce: true,
+          enforceWithoutDns: false,
+          mapAllowEntries: 1024,
+          mapDenyEntries: 256,
+          mapLpmEntries: 512,
+          mapLpmDenyEntries: 128,
+          mapDefaultEntries: 64,
+          dnsRefreshSeconds: 30,
+          dnsMaxTtlSeconds: 300,
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toEqual({
+      enabled: true,
+      required: false,
+      resolve_rdns: true,
+      enforce: true,
+      enforce_without_dns: false,
+      map_allow_entries: 1024,
+      map_deny_entries: 256,
+      map_lpm_entries: 512,
+      map_lpm_deny_entries: 128,
+      map_default_entries: 64,
+      dns_refresh_seconds: 30,
+      dns_max_ttl_seconds: 300,
+    });
+  });
+
+  it('emits partial ebpf config (enabled only)', () => {
+    const result = generateServerConfig({
+      networkIntercept: { ebpf: { enabled: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toEqual({ enabled: true });
+  });
+
+  it('omits ebpf when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toBeUndefined();
+  });
+
   it('generates seccomp details with file_monitor', () => {
     const result = generateServerConfig({
       seccompDetails: { execve: true, fileMonitor: { enabled: true, enforceWithoutFuse: false } },

@@ -64,6 +64,20 @@ export interface ServerConfigOpts {
     proxyListenAddr?: string;
     tlsInspection?: { enabled?: boolean; caCert?: string; caKey?: string };
     transparent?: { enabled?: boolean; subnetBase?: string };
+    ebpf?: {
+      enabled?: boolean;
+      required?: boolean;
+      resolveRdns?: boolean;
+      enforce?: boolean;
+      enforceWithoutDns?: boolean;
+      mapAllowEntries?: number;
+      mapDenyEntries?: number;
+      mapLpmEntries?: number;
+      mapLpmDenyEntries?: number;
+      mapDefaultEntries?: number;
+      dnsRefreshSeconds?: number;
+      dnsMaxTtlSeconds?: number;
+    };
   };
   seccompDetails?: {
     mode?: 'enforce' | 'audit' | 'disabled';
@@ -403,6 +417,23 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       net.transparent = {
         ...(opts.networkIntercept.transparent.enabled !== undefined && { enabled: opts.networkIntercept.transparent.enabled }),
         ...(opts.networkIntercept.transparent.subnetBase !== undefined && { subnet_base: opts.networkIntercept.transparent.subnetBase }),
+      };
+    }
+    if (opts.networkIntercept.ebpf) {
+      const e = opts.networkIntercept.ebpf;
+      net.ebpf = {
+        ...(e.enabled !== undefined && { enabled: e.enabled }),
+        ...(e.required !== undefined && { required: e.required }),
+        ...(e.resolveRdns !== undefined && { resolve_rdns: e.resolveRdns }),
+        ...(e.enforce !== undefined && { enforce: e.enforce }),
+        ...(e.enforceWithoutDns !== undefined && { enforce_without_dns: e.enforceWithoutDns }),
+        ...(e.mapAllowEntries !== undefined && { map_allow_entries: e.mapAllowEntries }),
+        ...(e.mapDenyEntries !== undefined && { map_deny_entries: e.mapDenyEntries }),
+        ...(e.mapLpmEntries !== undefined && { map_lpm_entries: e.mapLpmEntries }),
+        ...(e.mapLpmDenyEntries !== undefined && { map_lpm_deny_entries: e.mapLpmDenyEntries }),
+        ...(e.mapDefaultEntries !== undefined && { map_default_entries: e.mapDefaultEntries }),
+        ...(e.dnsRefreshSeconds !== undefined && { dns_refresh_seconds: e.dnsRefreshSeconds }),
+        ...(e.dnsMaxTtlSeconds !== undefined && { dns_max_ttl_seconds: e.dnsMaxTtlSeconds }),
       };
     }
   }
