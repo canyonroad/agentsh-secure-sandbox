@@ -23,6 +23,10 @@ export type {
 // Default threat feeds config
 export { defaultThreatFeeds } from './core/config.js';
 
+// Known agentsh mitigation set IDs
+export { KNOWN_MITIGATIONS } from './core/mitigations.js';
+export type { KnownMitigation } from './core/mitigations.js';
+
 // Policy type
 export type { PolicyDefinition } from './policies/schema.js';
 
