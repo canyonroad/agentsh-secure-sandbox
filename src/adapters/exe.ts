@@ -3,6 +3,7 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
 /** Promisified execFile that preserves stdout/stderr on both success and error. */
 function execFileAsync(
@@ -277,6 +278,7 @@ export function exeDefaults(): Partial<SecureConfig> {
     seccompDetails: {
       execve: false, // ptrace handles execve; MUST remain false
       fileMonitor: { enabled: true, enforceWithoutFuse: true },
+      mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
     },
     cgroups: { enabled: true },
     unixSockets: { enabled: true },

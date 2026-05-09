@@ -279,6 +279,146 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.network.proxy_listen_addr).toBe('127.0.0.1:8888');
   });
 
+  it('emits network.{enabled, proxy_port, dns_port}', () => {
+    const result = generateServerConfig({
+      networkIntercept: { enabled: true, proxyPort: 8080, dnsPort: 5353 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.enabled).toBe(true);
+    expect(parsed.sandbox.network.proxy_port).toBe(8080);
+    expect(parsed.sandbox.network.dns_port).toBe(5353);
+  });
+
+  it('emits tls_inspection sub-config', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        tlsInspection: {
+          enabled: true,
+          caCert: '/etc/agentsh/ca.crt',
+          caKey: '/etc/agentsh/ca.key',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.tls_inspection).toEqual({
+      enabled: true,
+      ca_cert: '/etc/agentsh/ca.crt',
+      ca_key: '/etc/agentsh/ca.key',
+    });
+  });
+
+  it('emits transparent sub-config', () => {
+    const result = generateServerConfig({
+      networkIntercept: { transparent: { enabled: true, subnetBase: '10.99.0.0/16' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.transparent).toEqual({
+      enabled: true,
+      subnet_base: '10.99.0.0/16',
+    });
+  });
+
+  it('omits new network sub-fields when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.tls_inspection).toBeUndefined();
+    expect(parsed.sandbox.network.transparent).toBeUndefined();
+    expect(parsed.sandbox.network.proxy_port).toBeUndefined();
+    expect(parsed.sandbox.network.dns_port).toBeUndefined();
+    // Default network.enabled is true from the default config init
+    expect(parsed.sandbox.network.enabled).toBe(true);
+  });
+
+  it('emits network.ebpf with all fields', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        ebpf: {
+          enabled: true,
+          required: false,
+          resolveRdns: true,
+          enforce: true,
+          enforceWithoutDns: false,
+          mapAllowEntries: 1024,
+          mapDenyEntries: 256,
+          mapLpmEntries: 512,
+          mapLpmDenyEntries: 128,
+          mapDefaultEntries: 64,
+          dnsRefreshSeconds: 30,
+          dnsMaxTtlSeconds: 300,
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toEqual({
+      enabled: true,
+      required: false,
+      resolve_rdns: true,
+      enforce: true,
+      enforce_without_dns: false,
+      map_allow_entries: 1024,
+      map_deny_entries: 256,
+      map_lpm_entries: 512,
+      map_lpm_deny_entries: 128,
+      map_default_entries: 64,
+      dns_refresh_seconds: 30,
+      dns_max_ttl_seconds: 300,
+    });
+  });
+
+  it('emits partial ebpf config (enabled only)', () => {
+    const result = generateServerConfig({
+      networkIntercept: { ebpf: { enabled: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toEqual({ enabled: true });
+  });
+
+  it('omits ebpf when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.ebpf).toBeUndefined();
+  });
+
+  it('emits network.rate_limits with global + per_domain', () => {
+    const result = generateServerConfig({
+      networkIntercept: {
+        rateLimits: {
+          enabled: true,
+          globalRpm: 600,
+          globalBurst: 100,
+          perDomain: [
+            { domain: 'api.openai.com', rpm: 60, burst: 20 },
+            { domain: 'registry.npmjs.org', rpm: 300 },
+          ],
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toEqual({
+      enabled: true,
+      global_rpm: 600,
+      global_burst: 100,
+      per_domain: [
+        { domain: 'api.openai.com', rpm: 60, burst: 20 },
+        { domain: 'registry.npmjs.org', rpm: 300 },
+      ],
+    });
+  });
+
+  it('emits partial rate_limits (enabled only)', () => {
+    const result = generateServerConfig({
+      networkIntercept: { rateLimits: { enabled: true } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toEqual({ enabled: true });
+  });
+
+  it('omits rate_limits when unset', () => {
+    const result = generateServerConfig({ networkIntercept: { interceptMode: 'all' } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.network.rate_limits).toBeUndefined();
+  });
+
   it('generates seccomp details with file_monitor', () => {
     const result = generateServerConfig({
       seccompDetails: { execve: true, fileMonitor: { enabled: true, enforceWithoutFuse: false } },
@@ -335,6 +475,135 @@ describe('generateServerConfig — extended fields', () => {
     const parsed = yaml.load(result) as any;
     expect(parsed.sandbox.seccomp.enabled).toBe(true);
     expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([{ family: 'AF_VSOCK' }]);
+  });
+
+  it('emits socket_rules with all optional fields when set', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'block-rxrpc', family: 'AF_RXRPC', action: 'log_and_kill' },
+          { name: 'block-xfrm', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM', action: 'log_and_kill' },
+          { name: 'block-raw-icmp', family: 'AF_INET', type: 'SOCK_RAW' },
+        ],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.socket_rules).toEqual([
+      { name: 'block-rxrpc', family: 'AF_RXRPC', action: 'log_and_kill' },
+      { name: 'block-xfrm', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM', action: 'log_and_kill' },
+      { name: 'block-raw-icmp', family: 'AF_INET', type: 'SOCK_RAW' },
+    ]);
+  });
+
+  it('omits socket_rules when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.socket_rules).toBeUndefined();
+  });
+
+  it('socketRules alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        socketRules: [{ name: 'r1', family: 'AF_VSOCK' }],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
+  it('emits mitigation_sets and mitigation_dirs as string arrays', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        mitigationSets: ['dirtyfrag-conservative'],
+        mitigationDirs: ['/etc/agentsh/mitigations'],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.mitigation_sets).toEqual(['dirtyfrag-conservative']);
+    expect(parsed.sandbox.seccomp.mitigation_dirs).toEqual(['/etc/agentsh/mitigations']);
+  });
+
+  it('omits mitigation_sets and mitigation_dirs when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.mitigation_sets).toBeUndefined();
+    expect(parsed.sandbox.seccomp.mitigation_dirs).toBeUndefined();
+  });
+
+  it('mitigationSets alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: { mitigationSets: ['dirtyfrag-conservative'] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
+  it('emits seccomp.mode when set', () => {
+    const result = generateServerConfig({
+      seccompDetails: { mode: 'audit' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.mode).toBe('audit');
+  });
+
+  it('omits seccomp.mode when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.mode).toBeUndefined();
+  });
+
+  it('emits seccomp.unix_socket sub-config', () => {
+    const result = generateServerConfig({
+      seccompDetails: { unixSocket: { enabled: true, action: 'audit' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.unix_socket).toEqual({ enabled: true, action: 'audit' });
+  });
+
+  it('emits partial unix_socket (action only)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { unixSocket: { action: 'enforce' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.unix_socket).toEqual({ action: 'enforce' });
+  });
+
+  it('emits seccomp.syscalls with full sub-config', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        syscalls: {
+          defaultAction: 'allow',
+          block: ['ptrace', 'process_vm_readv'],
+          allow: ['openat'],
+          onBlock: 'log_and_kill',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.syscalls).toEqual({
+      default_action: 'allow',
+      block: ['ptrace', 'process_vm_readv'],
+      allow: ['openat'],
+      on_block: 'log_and_kill',
+    });
+  });
+
+  it('emits partial syscalls config (block only)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { syscalls: { block: ['ptrace'] } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.syscalls).toEqual({ block: ['ptrace'] });
+  });
+
+  it('omits seccomp.syscalls when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.syscalls).toBeUndefined();
   });
 
   it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
@@ -636,6 +905,58 @@ describe('generateServerConfig — extended fields', () => {
     });
   });
 
+  it('emits execveDetails sub-fields alongside execve: true', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        execve: true,
+        execveDetails: {
+          maxArgc: 64,
+          maxArgvBytes: 8192,
+          onTruncated: 'deny',
+          approvalTimeout: '30s',
+          approvalTimeoutAction: 'deny',
+          internalBypass: ['/usr/local/bin/agentsh'],
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.execve).toEqual({
+      enabled: true,
+      max_argc: 64,
+      max_argv_bytes: 8192,
+      on_truncated: 'deny',
+      approval_timeout: '30s',
+      approval_timeout_action: 'deny',
+      internal_bypass: ['/usr/local/bin/agentsh'],
+    });
+  });
+
+  it('execve: true alone still emits { enabled: true } only (back-compat)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true });
+  });
+
+  it('execveDetails alone auto-enables execve enforcement', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execveDetails: { maxArgc: 32 } },
+    });
+    const parsed = yaml.load(result) as any;
+    // Auto-enable: setting argv-capture sub-fields without enabling the enforcer
+    // would silently no-op since agentsh defaults `enabled: false`.
+    expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true, max_argc: 32 });
+  });
+
+  it('execveDetails alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execveDetails: { maxArgc: 32 } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
   it('omits audit.integrity when not set', () => {
     const result = generateServerConfig({ audit: { enabled: true } });
     const parsed = yaml.load(result) as any;
@@ -654,6 +975,180 @@ describe('generateServerConfig — extended fields', () => {
     });
     const parsed = yaml.load(result) as any;
     expect(parsed.audit.integrity.aws_kms.encrypted_dek_file).toBeUndefined();
+  });
+
+  it('emits sandboxLimits.maxDiskIoMbps and maxNetworkMbps', () => {
+    const result = generateServerConfig({
+      sandboxLimits: { maxDiskIoMbps: 100, maxNetworkMbps: 50 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.limits.max_disk_io_mbps).toBe(100);
+    expect(parsed.sandbox.limits.max_network_mbps).toBe(50);
+  });
+
+  it('omits maxDiskIoMbps and maxNetworkMbps when unset', () => {
+    const result = generateServerConfig({ sandboxLimits: { maxMemoryMb: 512 } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.limits.max_disk_io_mbps).toBeUndefined();
+    expect(parsed.sandbox.limits.max_network_mbps).toBeUndefined();
+  });
+
+  it('emits fuse.mount_base_dir when set', () => {
+    const result = generateServerConfig({
+      fuse: { enabled: true, mountBaseDir: '/var/lib/agentsh/mounts' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.mount_base_dir).toBe('/var/lib/agentsh/mounts');
+  });
+
+  it('emits full fuse.audit sub-config', () => {
+    const result = generateServerConfig({
+      fuse: {
+        enabled: true,
+        audit: {
+          enabled: true,
+          mode: 'soft_block',
+          trashPath: '/var/lib/agentsh/trash',
+          ttl: '24h',
+          quota: '10GiB',
+          strictOnAuditFailure: true,
+          maxEventQueue: 1024,
+          hashSmallFilesUnder: '1MiB',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toEqual({
+      enabled: true,
+      mode: 'soft_block',
+      trash_path: '/var/lib/agentsh/trash',
+      ttl: '24h',
+      quota: '10GiB',
+      strict_on_audit_failure: true,
+      max_event_queue: 1024,
+      hash_small_files_under: '1MiB',
+    });
+  });
+
+  it('emits partial fuse.audit (mode only)', () => {
+    const result = generateServerConfig({
+      fuse: { audit: { mode: 'monitor' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toEqual({ mode: 'monitor' });
+  });
+
+  it('omits fuse.audit and mount_base_dir when unset', () => {
+    const result = generateServerConfig({ fuse: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toBeUndefined();
+    expect(parsed.sandbox.fuse.mount_base_dir).toBeUndefined();
+  });
+
+  it('emits cgroups.base_path when set', () => {
+    const result = generateServerConfig({
+      cgroups: { enabled: true, basePath: '/sys/fs/cgroup/agentsh' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.cgroups).toEqual({ enabled: true, base_path: '/sys/fs/cgroup/agentsh' });
+  });
+
+  it('omits cgroups.base_path when unset', () => {
+    const result = generateServerConfig({ cgroups: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.cgroups).toEqual({ enabled: true });
+  });
+
+  it('emits unix_sockets.wrapper_bin when set', () => {
+    const result = generateServerConfig({
+      unixSockets: { enabled: true, wrapperBin: '/usr/local/bin/agentsh-unixwrap' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.unix_sockets).toEqual({
+      enabled: true,
+      wrapper_bin: '/usr/local/bin/agentsh-unixwrap',
+    });
+  });
+
+  it('omits unix_sockets.wrapper_bin when unset', () => {
+    const result = generateServerConfig({ unixSockets: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.unix_sockets).toEqual({ enabled: true });
+  });
+
+  it('throws when execve is false but execveDetails has any field set', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        execve: false,
+        execveDetails: { maxArgc: 64 },
+      },
+    })).toThrow(/execveDetails.*cannot set sub-fields when execve is false/);
+  });
+
+  it('does not throw when execve is false and execveDetails is empty/undefined', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { execve: false, execveDetails: {} },
+    })).not.toThrow();
+    expect(() => generateServerConfig({
+      seccompDetails: { execve: false },
+    })).not.toThrow();
+  });
+});
+
+describe('generateServerConfig — validation', () => {
+  it('throws when mitigationDirs has a non-absolute path', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { mitigationDirs: ['etc/agentsh/mitigations'] },
+    })).toThrow(/mitigationDirs\[0\].*absolute path.*"etc\/agentsh\/mitigations"/);
+  });
+
+  it('throws when socketRules contain a duplicate name', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_VSOCK' },
+          { name: 'r1', family: 'AF_RXRPC' },
+        ],
+      },
+    })).toThrow(/socketRules\[1\].*duplicate name "r1"/);
+  });
+
+  it('throws when NETLINK_* protocol is used outside AF_NETLINK', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_INET', protocol: 'NETLINK_XFRM' },
+        ],
+      },
+    })).toThrow(/socketRules\[0\].protocol.*NETLINK_\* is only valid with family AF_NETLINK/);
+  });
+
+  it('throws when syscalls.defaultAction=allow without a block list', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'allow' } },
+    })).toThrow(/syscalls.*defaultAction "allow" requires non-empty block list/);
+  });
+
+  it('throws when syscalls.defaultAction=allow with empty block list', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'allow', block: [] } },
+    })).toThrow(/syscalls.*defaultAction "allow" requires non-empty block list/);
+  });
+
+  it('does not throw when syscalls.defaultAction=block with empty block list (no-op block)', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'block' } },
+    })).not.toThrow();
+  });
+
+  it('does not throw when NETLINK_XFRM is used with AF_NETLINK', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM' },
+        ],
+      },
+    })).not.toThrow();
   });
 });
 

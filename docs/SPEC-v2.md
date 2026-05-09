@@ -1509,9 +1509,115 @@ export async function POST(req) {
 
 ---
 
-## 16. Future Work (v0.2+)
+## 16. Server Config Schema
 
-### 16.1 Approval handler
+The `serverConfig` field in `SecureConfig` maps to agentsh's `config.yml` subsections. All keys are snake_case YAML. This section documents the fields exposed in v0.19.3+.
+
+### 16.1 `seccomp_details`
+
+Controls seccomp-bpf interception. Setting any sub-field implicitly enables `sandbox.seccomp.enabled` (unless `ptrace.enabled` is true).
+
+The `sprites`, `freestyle`, `runloop`, and `exe` adapter defaults set `mitigation_sets: ['dirtyfrag-conservative']`. To opt out, pass `seccompDetails: { mitigationSets: [] }` to `secureSandbox()`.
+
+**Top-level fields:**
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `mode` | `enforce \| audit \| disabled` | Overall seccomp enforcement mode |
+| `unix_socket.enabled` | boolean | Enable unix socket path interception |
+| `unix_socket.action` | `enforce \| audit` | Enforce or audit-only unix socket access |
+| `syscalls.default_action` | `allow \| block` | Baseline for unlisted syscalls |
+| `syscalls.block` | `string[]` | Syscall names to block |
+| `syscalls.allow` | `string[]` | Syscall names to always allow |
+| `syscalls.on_block` | `errno \| kill \| log \| log_and_kill` | Action when a blocked syscall is intercepted |
+| `execve.max_argc` | number | Max argument count before truncation |
+| `execve.max_argv_bytes` | number | Max total argv bytes before truncation |
+| `execve.on_truncated` | `deny \| allow \| approval` | Action when argv is truncated |
+| `execve.approval_timeout` | string | Timeout for approval step (e.g. `'10s'`) |
+| `execve.approval_timeout_action` | `deny \| allow` | Action on approval timeout |
+| `execve.internal_bypass` | `string[]` | Executable paths exempt from execve policy |
+| `socket_rules[].name` | string | Unique rule name (required) |
+| `socket_rules[].family` | string | Socket address family (e.g. `AF_NETLINK`) |
+| `socket_rules[].type` | string | Socket type (e.g. `SOCK_RAW`); optional — matches any if unset |
+| `socket_rules[].protocol` | string | Protocol name (e.g. `NETLINK_XFRM`); optional |
+| `socket_rules[].action` | `errno \| kill \| log \| log_and_kill` | Default: `errno` |
+| `mitigation_sets` | `string[]` | Named built-in mitigation bundles (e.g. `['dirtyfrag-conservative']`) |
+| `mitigation_dirs` | `string[]` | Absolute paths to directories with custom mitigation YAML files |
+
+### 16.2 `network_intercept`
+
+Controls the agentsh network proxy and eBPF enforcement layer.
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `tls_inspection.enabled` | boolean | Enable TLS MITM inspection |
+| `tls_inspection.ca_cert` | string | Path to CA certificate PEM |
+| `tls_inspection.ca_key` | string | Path to CA private key PEM |
+| `transparent.enabled` | boolean | Enable transparent proxy mode |
+| `transparent.subnet_base` | string | CIDR subnet for transparent routing |
+| `ebpf.enabled` | boolean | Enable eBPF network enforcement layer |
+| `ebpf.required` | boolean | Fail provisioning if eBPF unavailable |
+| `ebpf.enforce` | boolean | Enforce policy via eBPF (vs. audit-only) |
+| `ebpf.resolve_rdns` | boolean | Reverse-DNS resolution in eBPF maps |
+| `ebpf.enforce_without_dns` | boolean | Enforce even when DNS proxy is bypassed |
+| `ebpf.map_allow_entries` | number | eBPF allow-map capacity |
+| `ebpf.map_deny_entries` | number | eBPF deny-map capacity |
+| `ebpf.map_lpm_entries` | number | eBPF LPM (CIDR) allow-map capacity |
+| `ebpf.map_lpm_deny_entries` | number | eBPF LPM deny-map capacity |
+| `ebpf.map_default_entries` | number | eBPF default-action map capacity |
+| `ebpf.dns_refresh_seconds` | number | Interval for refreshing DNS-resolved IPs |
+| `ebpf.dns_max_ttl_seconds` | number | Max TTL cap applied to DNS entries |
+| `rate_limits.enabled` | boolean | Enable rate limiting |
+| `rate_limits.global_rpm` | number | Global requests-per-minute ceiling |
+| `rate_limits.global_burst` | number | Global burst allowance (token bucket) |
+| `rate_limits.per_domain` | `Array<{domain, rpm?, burst?}>` | Per-domain RPM and burst overrides |
+
+### 16.3 `fuse`
+
+Controls FUSE-based filesystem virtualization.
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `audit.enabled` | boolean | Enable FUSE audit logging |
+| `audit.mode` | `monitor \| soft_block \| soft_delete \| strict` | Audit enforcement mode |
+| `audit.trash_path` | string | Directory where soft-deleted files are moved |
+| `audit.ttl` | string | Retention duration for soft-deleted files (e.g. `'24h'`) |
+| `audit.quota` | string | Maximum trash directory size (e.g. `'5GiB'`) |
+| `audit.strict_on_audit_failure` | boolean | Block file op if writing audit record fails |
+| `audit.max_event_queue` | number | Depth of in-memory audit event queue |
+| `audit.hash_small_files_under` | string | Hash file contents below this size (e.g. `'1MiB'`) |
+| `mount_base_dir` | string | Override the base directory for FUSE workspace mounts |
+
+### 16.4 `sandbox_limits`
+
+Resource limits enforced via cgroups.
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `max_disk_io_mbps` | number | Per-session disk I/O bandwidth cap (MB/s) |
+| `max_network_mbps` | number | Per-session network bandwidth cap (Mb/s) |
+
+### 16.5 `cgroups`
+
+Cgroup isolation settings.
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `base_path` | string | Override cgroup hierarchy root (default: `/sys/fs/cgroup/agentsh`) |
+
+### 16.6 `unix_sockets`
+
+Unix domain socket support.
+
+| Key | Values | Description |
+|-----|--------|-------------|
+| `wrapper_bin` | string | Path to a wrapper binary invoked around unix socket connections |
+
+---
+
+## 17. Future Work (v0.2+)
+
+### 17.1 Approval handler
 
 The `approve` verdict will be added in v0.2 with a well-defined
 callback interface:
@@ -1539,19 +1645,19 @@ interface ApprovalResponse {
 This will integrate with AI SDK 6's `needsApproval` / `addToolApprovalResponse`
 for web UIs, and with CLI prompts for terminal usage.
 
-### 16.2 Event streaming
+### 17.2 Event streaming
 
 Real-time agentsh event streaming (file ops, network connects, process
 starts) as SSE or typed AI SDK data parts for live execution panes.
 
-### 16.3 Watchtower integration
+### 17.3 Watchtower integration
 
 Forwarding agentsh events to Watchtower with AI SDK step indices for
 causal tracing across the model → tool → syscall → verdict chain.
 W3C trace context propagation provides the `traceparent` threading
 needed to correlate agentsh events with external OTEL traces.
 
-### 16.4 Package install scanning integration
+### 17.4 Package install scanning integration
 
 agentsh includes package install security scanning across npm, pip,
 uv, pnpm, yarn, and poetry. This could be surfaced in `SecuredSandbox`
@@ -1559,7 +1665,7 @@ as a dedicated method or as enriched metadata on `exec()` results when
 an install command is detected — showing vulnerability counts, scorecard
 ratings, and license concerns before the install completes.
 
-### 16.5 Threat intelligence feed configuration
+### 17.5 Threat intelligence feed configuration
 
 agentsh supports external threat intelligence feeds (URLhaus,
 phishing lists, custom blocklists) for blocking connections to
@@ -1567,7 +1673,7 @@ known-malicious domains. The library could expose feed configuration
 in the policy definition so developers can opt into threat feed
 protection without editing agentsh config directly.
 
-### 16.6 MCP security policy
+### 17.6 MCP security policy
 
 agentsh includes MCP attack surface hardening: tool-output
 inspection for prompt injection, argument scanning for shell injection,
@@ -1575,7 +1681,7 @@ sampling request control, tool list change detection, and server binary
 pinning. A future version of this library could expose MCP security
 configuration in `PolicyDefinition` for agents that use MCP servers.
 
-### 16.7 Multiple concurrent sessions
+### 17.7 Multiple concurrent sessions
 
 The current design assumes one session per `SecuredSandbox`. For use
 cases where multiple agents share a sandbox with different policies
@@ -1583,7 +1689,7 @@ cases where multiple agents share a sandbox with different policies
 for multiple sessions per sandbox with independent policies would be
 valuable.
 
-### 16.8 Additional adapters
+### 17.8 Additional adapters
 
 Docker and SSH adapters are natural candidates for future releases:
 

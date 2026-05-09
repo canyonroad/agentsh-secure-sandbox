@@ -1,6 +1,8 @@
 import yaml from 'js-yaml';
 import type { ThreatFeedsConfig, PackageChecksConfig, ProviderConfig } from './types.js';
 
+type SeccompAction = 'errno' | 'kill' | 'log' | 'log_and_kill';
+
 export interface ServerConfigOpts {
   watchtower?: string;
   realPaths?: boolean;
@@ -37,20 +39,89 @@ export interface ServerConfigOpts {
       gcpKms?: { keyName: string; encryptedDekFile?: string };
     };
   };
-  sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
+  sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number; maxDiskIoMbps?: number; maxNetworkMbps?: number };
   allowDegraded?: boolean;
-  fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
-  networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
+  fuse?: {
+    enabled?: boolean;
+    deferred?: boolean;
+    deferredMarkerFile?: string;
+    deferredEnableCommand?: string[];
+    mountBaseDir?: string;
+    audit?: {
+      enabled?: boolean;
+      mode?: 'monitor' | 'soft_block' | 'soft_delete' | 'strict';
+      trashPath?: string;
+      ttl?: string;
+      quota?: string;
+      strictOnAuditFailure?: boolean;
+      maxEventQueue?: number;
+      hashSmallFilesUnder?: string;
+    };
+  };
+  networkIntercept?: {
+    enabled?: boolean;
+    proxyPort?: number;
+    dnsPort?: number;
+    interceptMode?: string;
+    proxyListenAddr?: string;
+    tlsInspection?: { enabled?: boolean; caCert?: string; caKey?: string };
+    transparent?: { enabled?: boolean; subnetBase?: string };
+    ebpf?: {
+      enabled?: boolean;
+      required?: boolean;
+      resolveRdns?: boolean;
+      enforce?: boolean;
+      enforceWithoutDns?: boolean;
+      mapAllowEntries?: number;
+      mapDenyEntries?: number;
+      mapLpmEntries?: number;
+      mapLpmDenyEntries?: number;
+      mapDefaultEntries?: number;
+      dnsRefreshSeconds?: number;
+      dnsMaxTtlSeconds?: number;
+    };
+    rateLimits?: {
+      enabled?: boolean;
+      globalRpm?: number;
+      globalBurst?: number;
+      perDomain?: Array<{ domain: string; rpm?: number; burst?: number }>;
+    };
+  };
   seccompDetails?: {
+    mode?: 'enforce' | 'audit' | 'disabled';
+    unixSocket?: { enabled?: boolean; action?: 'enforce' | 'audit' };
     execve?: boolean;
+    execveDetails?: {
+      maxArgc?: number;
+      maxArgvBytes?: number;
+      onTruncated?: 'deny' | 'allow' | 'approval';
+      approvalTimeout?: string;
+      approvalTimeoutAction?: 'deny' | 'allow';
+      internalBypass?: string[];
+    };
     fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
     blockedSocketFamilies?: Array<{
       family: string;
-      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+      action?: SeccompAction;
     }>;
+    socketRules?: Array<{
+      name: string;
+      family: string;
+      type?: string;
+      protocol?: string;
+      action?: SeccompAction;
+    }>;
+    syscalls?: {
+      defaultAction?: 'allow' | 'block';
+      block?: string[];
+      allow?: string[];
+      onBlock?: SeccompAction;
+    };
+    mitigationSets?: string[];
+    mitigationDirs?: string[];
   };
-  cgroups?: { enabled?: boolean };
-  unixSockets?: { enabled?: boolean };
+  cgroups?: { enabled?: boolean; basePath?: string };
+  unixSockets?: { enabled?: boolean; wrapperBin?: string };
   ptrace?: {
     enabled?: boolean;
     attachMode?: 'children' | 'pid';
@@ -140,6 +211,36 @@ function providerConfigToSnakeCase(config: ProviderConfig): Record<string, unkno
   if (config.command !== undefined) result.command = config.command;
   if (config.options !== undefined) result.options = config.options;
   return result;
+}
+
+function validateSeccompDetails(seccomp: NonNullable<ServerConfigOpts['seccompDetails']>): void {
+  if (seccomp.mitigationDirs) {
+    seccomp.mitigationDirs.forEach((path, i) => {
+      if (!path.startsWith('/')) {
+        throw new Error(`seccompDetails.mitigationDirs[${i}]: must be an absolute path, got "${path}"`);
+      }
+    });
+  }
+  if (seccomp.socketRules) {
+    const names = new Set<string>();
+    seccomp.socketRules.forEach((r, i) => {
+      if (names.has(r.name)) {
+        throw new Error(`seccompDetails.socketRules[${i}].name: duplicate name "${r.name}"`);
+      }
+      names.add(r.name);
+      if (r.protocol?.startsWith('NETLINK_') && r.family !== 'AF_NETLINK') {
+        throw new Error(`seccompDetails.socketRules[${i}].protocol: NETLINK_* is only valid with family AF_NETLINK`);
+      }
+    });
+  }
+  if (seccomp.syscalls) {
+    if (seccomp.syscalls.defaultAction === 'allow' && (!seccomp.syscalls.block || seccomp.syscalls.block.length === 0)) {
+      throw new Error('seccompDetails.syscalls: defaultAction "allow" requires non-empty block list');
+    }
+  }
+  if (seccomp.execve === false && seccomp.execveDetails && Object.values(seccomp.execveDetails).some(v => v !== undefined)) {
+    throw new Error('seccompDetails.execveDetails: cannot set sub-fields when execve is false (sub-fields would be silently ignored). Set execve: true or omit execve to use execveDetails.');
+  }
 }
 
 export function generateServerConfig(opts: ServerConfigOpts): string {
@@ -281,6 +382,8 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       ...(opts.sandboxLimits.maxMemoryMb !== undefined && { max_memory_mb: opts.sandboxLimits.maxMemoryMb }),
       ...(opts.sandboxLimits.maxCpuPercent !== undefined && { max_cpu_percent: opts.sandboxLimits.maxCpuPercent }),
       ...(opts.sandboxLimits.maxProcesses !== undefined && { max_processes: opts.sandboxLimits.maxProcesses }),
+      ...(opts.sandboxLimits.maxDiskIoMbps !== undefined && { max_disk_io_mbps: opts.sandboxLimits.maxDiskIoMbps }),
+      ...(opts.sandboxLimits.maxNetworkMbps !== undefined && { max_network_mbps: opts.sandboxLimits.maxNetworkMbps }),
     };
   }
 
@@ -291,26 +394,120 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.fuse.deferred !== undefined) fuseObj.deferred = opts.fuse.deferred;
     if (opts.fuse.deferredMarkerFile) fuseObj.deferred_marker_file = opts.fuse.deferredMarkerFile;
     if (opts.fuse.deferredEnableCommand) fuseObj.deferred_enable_command = opts.fuse.deferredEnableCommand;
+    if (opts.fuse.mountBaseDir) fuseObj.mount_base_dir = opts.fuse.mountBaseDir;
+    if (opts.fuse.audit) {
+      fuseObj.audit = {
+        ...(opts.fuse.audit.enabled !== undefined && { enabled: opts.fuse.audit.enabled }),
+        ...(opts.fuse.audit.mode !== undefined && { mode: opts.fuse.audit.mode }),
+        ...(opts.fuse.audit.trashPath !== undefined && { trash_path: opts.fuse.audit.trashPath }),
+        ...(opts.fuse.audit.ttl !== undefined && { ttl: opts.fuse.audit.ttl }),
+        ...(opts.fuse.audit.quota !== undefined && { quota: opts.fuse.audit.quota }),
+        ...(opts.fuse.audit.strictOnAuditFailure !== undefined && { strict_on_audit_failure: opts.fuse.audit.strictOnAuditFailure }),
+        ...(opts.fuse.audit.maxEventQueue !== undefined && { max_event_queue: opts.fuse.audit.maxEventQueue }),
+        ...(opts.fuse.audit.hashSmallFilesUnder !== undefined && { hash_small_files_under: opts.fuse.audit.hashSmallFilesUnder }),
+      };
+    }
   }
 
   // Network intercept
   if (opts.networkIntercept) {
     const net = (config.sandbox as any).network;
+    if (opts.networkIntercept.enabled !== undefined) net.enabled = opts.networkIntercept.enabled;
+    if (opts.networkIntercept.proxyPort !== undefined) net.proxy_port = opts.networkIntercept.proxyPort;
+    if (opts.networkIntercept.dnsPort !== undefined) net.dns_port = opts.networkIntercept.dnsPort;
     if (opts.networkIntercept.interceptMode) net.intercept_mode = opts.networkIntercept.interceptMode;
     if (opts.networkIntercept.proxyListenAddr) net.proxy_listen_addr = opts.networkIntercept.proxyListenAddr;
+    if (opts.networkIntercept.tlsInspection) {
+      net.tls_inspection = {
+        ...(opts.networkIntercept.tlsInspection.enabled !== undefined && { enabled: opts.networkIntercept.tlsInspection.enabled }),
+        ...(opts.networkIntercept.tlsInspection.caCert !== undefined && { ca_cert: opts.networkIntercept.tlsInspection.caCert }),
+        ...(opts.networkIntercept.tlsInspection.caKey !== undefined && { ca_key: opts.networkIntercept.tlsInspection.caKey }),
+      };
+    }
+    if (opts.networkIntercept.transparent) {
+      net.transparent = {
+        ...(opts.networkIntercept.transparent.enabled !== undefined && { enabled: opts.networkIntercept.transparent.enabled }),
+        ...(opts.networkIntercept.transparent.subnetBase !== undefined && { subnet_base: opts.networkIntercept.transparent.subnetBase }),
+      };
+    }
+    if (opts.networkIntercept.ebpf) {
+      const e = opts.networkIntercept.ebpf;
+      net.ebpf = {
+        ...(e.enabled !== undefined && { enabled: e.enabled }),
+        ...(e.required !== undefined && { required: e.required }),
+        ...(e.resolveRdns !== undefined && { resolve_rdns: e.resolveRdns }),
+        ...(e.enforce !== undefined && { enforce: e.enforce }),
+        ...(e.enforceWithoutDns !== undefined && { enforce_without_dns: e.enforceWithoutDns }),
+        ...(e.mapAllowEntries !== undefined && { map_allow_entries: e.mapAllowEntries }),
+        ...(e.mapDenyEntries !== undefined && { map_deny_entries: e.mapDenyEntries }),
+        ...(e.mapLpmEntries !== undefined && { map_lpm_entries: e.mapLpmEntries }),
+        ...(e.mapLpmDenyEntries !== undefined && { map_lpm_deny_entries: e.mapLpmDenyEntries }),
+        ...(e.mapDefaultEntries !== undefined && { map_default_entries: e.mapDefaultEntries }),
+        ...(e.dnsRefreshSeconds !== undefined && { dns_refresh_seconds: e.dnsRefreshSeconds }),
+        ...(e.dnsMaxTtlSeconds !== undefined && { dns_max_ttl_seconds: e.dnsMaxTtlSeconds }),
+      };
+    }
+    if (opts.networkIntercept.rateLimits) {
+      const rl = opts.networkIntercept.rateLimits;
+      net.rate_limits = {
+        ...(rl.enabled !== undefined && { enabled: rl.enabled }),
+        ...(rl.globalRpm !== undefined && { global_rpm: rl.globalRpm }),
+        ...(rl.globalBurst !== undefined && { global_burst: rl.globalBurst }),
+        ...(rl.perDomain !== undefined && {
+          per_domain: rl.perDomain.map(d => ({
+            domain: d.domain,
+            ...(d.rpm !== undefined && { rpm: d.rpm }),
+            ...(d.burst !== undefined && { burst: d.burst }),
+          })),
+        }),
+      };
+    }
   }
 
   // Seccomp details — providing seccompDetails implicitly enables seccomp
   // (unless ptrace is also enabled, since they're mutually exclusive)
   if (opts.seccompDetails) {
+    validateSeccompDetails(opts.seccompDetails);
     const sec = (config.sandbox as any).seccomp;
     if (!opts.ptrace?.enabled) sec.enabled = true;
+    if (opts.seccompDetails.mode !== undefined) sec.mode = opts.seccompDetails.mode;
+    if (opts.seccompDetails.unixSocket) {
+      sec.unix_socket = {
+        ...(opts.seccompDetails.unixSocket.enabled !== undefined && { enabled: opts.seccompDetails.unixSocket.enabled }),
+        ...(opts.seccompDetails.unixSocket.action !== undefined && { action: opts.seccompDetails.unixSocket.action }),
+      };
+    }
+    if (opts.seccompDetails.syscalls) {
+      sec.syscalls = {
+        ...(opts.seccompDetails.syscalls.defaultAction !== undefined && { default_action: opts.seccompDetails.syscalls.defaultAction }),
+        ...(opts.seccompDetails.syscalls.block !== undefined && { block: [...opts.seccompDetails.syscalls.block] }),
+        ...(opts.seccompDetails.syscalls.allow !== undefined && { allow: [...opts.seccompDetails.syscalls.allow] }),
+        ...(opts.seccompDetails.syscalls.onBlock !== undefined && { on_block: opts.seccompDetails.syscalls.onBlock }),
+      };
+    }
     // agentsh v0.17.0 changed seccomp.execve from a bare bool into an
-    // ExecveConfig struct (with `enabled` plus argv-capture sub-fields).
-    // Wrap the bool we accept from callers into the struct shape; we only
-    // need `enabled` since the other fields default to zero values.
-    if (opts.seccompDetails.execve !== undefined) {
-      sec.execve = { enabled: opts.seccompDetails.execve };
+    // ExecveConfig struct (`enabled` + argv-capture sub-fields). Callers
+    // can set `execve: true` for the simple toggle, `execveDetails: {...}`
+    // for the sub-fields, or both. When only `execveDetails` is provided
+    // we auto-set `enabled: true` — otherwise agentsh would see Go's zero
+    // value (false) and ignore the sub-fields silently.
+    if (opts.seccompDetails.execve !== undefined || opts.seccompDetails.execveDetails) {
+      const ex: Record<string, unknown> = {};
+      if (opts.seccompDetails.execve !== undefined) {
+        ex.enabled = opts.seccompDetails.execve;
+      } else if (opts.seccompDetails.execveDetails) {
+        ex.enabled = true;
+      }
+      const ed = opts.seccompDetails.execveDetails;
+      if (ed) {
+        if (ed.maxArgc !== undefined) ex.max_argc = ed.maxArgc;
+        if (ed.maxArgvBytes !== undefined) ex.max_argv_bytes = ed.maxArgvBytes;
+        if (ed.onTruncated !== undefined) ex.on_truncated = ed.onTruncated;
+        if (ed.approvalTimeout !== undefined) ex.approval_timeout = ed.approvalTimeout;
+        if (ed.approvalTimeoutAction !== undefined) ex.approval_timeout_action = ed.approvalTimeoutAction;
+        if (ed.internalBypass !== undefined) ex.internal_bypass = [...ed.internalBypass];
+      }
+      sec.execve = ex;
     }
     if (opts.seccompDetails.fileMonitor) {
       sec.file_monitor = {
@@ -327,16 +524,37 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(e.action !== undefined && { action: e.action }),
       }));
     }
+    if (opts.seccompDetails.socketRules !== undefined) {
+      sec.socket_rules = opts.seccompDetails.socketRules.map(r => ({
+        name: r.name,
+        family: r.family,
+        ...(r.type !== undefined && { type: r.type }),
+        ...(r.protocol !== undefined && { protocol: r.protocol }),
+        ...(r.action !== undefined && { action: r.action }),
+      }));
+    }
+    if (opts.seccompDetails.mitigationSets !== undefined) {
+      sec.mitigation_sets = [...opts.seccompDetails.mitigationSets];
+    }
+    if (opts.seccompDetails.mitigationDirs !== undefined) {
+      sec.mitigation_dirs = [...opts.seccompDetails.mitigationDirs];
+    }
   }
 
   // Cgroups
   if (opts.cgroups) {
-    (config.sandbox as any).cgroups = { ...opts.cgroups };
+    (config.sandbox as any).cgroups = {
+      ...(opts.cgroups.enabled !== undefined && { enabled: opts.cgroups.enabled }),
+      ...(opts.cgroups.basePath !== undefined && { base_path: opts.cgroups.basePath }),
+    };
   }
 
   // Unix sockets
   if (opts.unixSockets) {
-    (config.sandbox as any).unix_sockets = { ...opts.unixSockets };
+    (config.sandbox as any).unix_sockets = {
+      ...(opts.unixSockets.enabled !== undefined && { enabled: opts.unixSockets.enabled }),
+      ...(opts.unixSockets.wrapperBin !== undefined && { wrapper_bin: opts.unixSockets.wrapperBin }),
+    };
   }
 
   // Ptrace

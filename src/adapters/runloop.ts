@@ -2,6 +2,7 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import type { ServerConfigOpts } from '../core/config.js';
 import type { PolicyDefinition } from '../policies/schema.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
+import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
 /**
  * Wraps a Runloop Devbox into a SandboxAdapter.
@@ -131,6 +132,7 @@ export function runloopDefaults(): Partial<SecureConfig> {
     networkIntercept: { interceptMode: 'all', proxyListenAddr: '127.0.0.1:0' },
     seccompDetails: {
       fileMonitor: { enabled: true, enforceWithoutFuse: true },
+      mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
     },
     // Runloop's kernel does not expose cgroup-v2 subtree_control reliably.
     // agentsh v0.18.0 (#197) made cgroup subtree_control checks fail closed,

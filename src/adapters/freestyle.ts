@@ -5,6 +5,7 @@ import type { PolicyDefinition } from '../policies/schema.js';
 import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 import { CHECKSUMS } from '../core/integrity.js';
+import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
 const AGENTSH_VERSION = '0.19.3';
 const AGENTSH_SHA256 = CHECKSUMS[AGENTSH_VERSION].linux_amd64;
@@ -203,6 +204,7 @@ export function freestyleDefaults(): Partial<SecureConfig> {
     seccompDetails: {
       execve: true,
       fileMonitor: { enabled: false, enforceWithoutFuse: false },
+      mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
     },
     cgroups: { enabled: true },
     unixSockets: { enabled: true },
