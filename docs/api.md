@@ -408,13 +408,13 @@ The `serverConfig` field on `SecureConfig` accepts additional server configurati
 | `logging` | Log level, format, and output |
 | `sessions` | Session base dir, limits, timeouts, cleanup |
 | `audit` | SQLite audit logging with optional HMAC integrity chain |
-| `sandboxLimits` | Memory, CPU, and process limits |
+| `sandboxLimits` | Memory, CPU, process, disk I/O (`maxDiskIoMbps`), and network bandwidth (`maxNetworkMbps`) limits |
 | `allowDegraded` | Start sandbox even if FUSE/seccomp fail (useful for gVisor) |
-| `fuse` | FUSE enable flag, deferred mode, marker file, and enable command |
-| `networkIntercept` | Network intercept mode and proxy address |
-| `seccompDetails` | Execve filtering, file monitor, and socket family blocking (see [Seccomp Details Config](#seccomp-details-config)) |
-| `cgroups` | Cgroup isolation |
-| `unixSockets` | Unix socket support |
+| `fuse` | FUSE enable flag, deferred mode, marker file, enable command, `mountBaseDir`, and `audit.*` (see [FUSE Config](#fuse-config)) |
+| `networkIntercept` | Network intercept mode, proxy/DNS ports, TLS inspection, transparent proxy, eBPF, and rate limits (see [Network Intercept Config](#network-intercept-config)) |
+| `seccompDetails` | Mode, unix socket, execve filtering, syscalls, file monitor, socket family blocking, socketRules, and mitigation sets (see [Seccomp Details Config](#seccomp-details-config)) |
+| `cgroups` | Cgroup isolation (`enabled`, `basePath`) |
+| `unixSockets` | Unix socket support (`enabled`, `wrapperBin`) |
 | `ptrace` | Ptrace-based syscall interception (see [Ptrace Config](#ptrace-config)) |
 | `envInject` | Environment variables to inject into sandbox processes |
 | `proxy` | MITM proxy mode, port, and provider URLs |
@@ -432,7 +432,20 @@ The `seccompDetails` section configures seccomp-bpf interception. Setting any su
 ```typescript
 serverConfig: {
   seccompDetails: {
+    mode: 'enforce',                       // 'enforce' | 'audit' | 'disabled'
+    unixSocket: {
+      enabled: true,                       // Enable unix socket interception
+      action: 'enforce',                   // 'enforce' | 'audit'
+    },
     execve: true,                          // Intercept execve/execveat for command policy
+    execveDetails: {
+      maxArgc: 256,                        // Max argument count before truncation
+      maxArgvBytes: 16384,                 // Max total argv bytes before truncation
+      onTruncated: 'deny',                 // 'deny' | 'allow' | 'approval'
+      approvalTimeout: '10s',              // Timeout when onTruncated is 'approval'
+      approvalTimeoutAction: 'deny',       // Action on timeout: 'deny' | 'allow'
+      internalBypass: ['/usr/bin/agentsh'], // Paths exempt from execve policy
+    },
     fileMonitor: {
       enabled: true,
       enforceWithoutFuse: false,           // Enforce file policy via seccomp even without FUSE
@@ -440,13 +453,78 @@ serverConfig: {
       openatEmulation: false,              // Rewrite openat for redirect rules
       blockIoUring: false,                 // Block io_uring (bypass channel for file syscalls)
     },
+    syscalls: {
+      defaultAction: 'allow',             // 'allow' | 'block'
+      block: ['ptrace', 'perf_event_open'], // Syscall names to block
+      allow: [],                           // Syscall names to always allow
+      onBlock: 'errno',                    // 'errno' | 'kill' | 'log' | 'log_and_kill'
+    },
     blockedSocketFamilies: [               // Per-AF_* family blocking on socket(2)/socketpair(2)
       { family: 'AF_VSOCK', action: 'log_and_kill' },
       { family: 'AF_ALG' },                // action defaults to 'errno' (returns EAFNOSUPPORT)
     ],
+    socketRules: [                         // Fine-grained socket rules (family + type + protocol)
+      { name: 'block-netlink-xfrm', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM', action: 'log_and_kill' },
+    ],
+    mitigationSets: ['dirtyfrag-conservative'], // Named built-in mitigation bundles
+    mitigationDirs: ['/etc/agentsh/mitigations'], // Directories with custom mitigation YAML files
   },
 }
 ```
+
+**Top-level `seccompDetails` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | `'enforce' \| 'audit' \| 'disabled'` | `'enforce'` | Overall seccomp enforcement mode |
+| `unixSocket` | `object` | — | Unix socket interception config (see below) |
+| `execve` | `boolean` | `false` | Intercept execve/execveat for command policy |
+| `execveDetails` | `object` | — | Fine-grained execve interception config (auto-sets `execve: true`; see below) |
+| `fileMonitor` | `object` | — | File syscall interception config |
+| `syscalls` | `object` | — | Custom syscall allow/block list (see below) |
+| `blockedSocketFamilies` | `Array<{family, action?}>` | 12 defaults | Per-AF_* family blocking (see below) |
+| `socketRules` | `Array<{name, family, type?, protocol?, action?}>` | — | Fine-grained socket rules by family+type+protocol (see below) |
+| `mitigationSets` | `string[]` | adapter default | Named built-in mitigation bundles to load (see [Mitigation Sets](#mitigation-sets)) |
+| `mitigationDirs` | `string[]` | — | Directories containing custom mitigation YAML files (must be absolute paths) |
+
+**`unixSocket` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | — | Enable unix socket path interception |
+| `action` | `'enforce' \| 'audit'` | — | Whether to enforce or only audit unix socket access |
+
+**`execveDetails` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxArgc` | `number` | — | Maximum argument count before truncation |
+| `maxArgvBytes` | `number` | — | Maximum total argv size in bytes before truncation |
+| `onTruncated` | `'deny' \| 'allow' \| 'approval'` | — | Action when argv is truncated |
+| `approvalTimeout` | `string` | — | Timeout for human-approval step (e.g. `'10s'`) |
+| `approvalTimeoutAction` | `'deny' \| 'allow'` | — | Action on approval timeout |
+| `internalBypass` | `string[]` | — | Executable paths exempt from execve policy |
+
+**`syscalls` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `defaultAction` | `'allow' \| 'block'` | — | Baseline action for unlisted syscalls. `'allow'` requires a non-empty `block` list. |
+| `block` | `string[]` | — | Syscall names to block |
+| `allow` | `string[]` | — | Syscall names to always allow |
+| `onBlock` | `'errno' \| 'kill' \| 'log' \| 'log_and_kill'` | `'errno'` | Action when a blocked syscall is intercepted |
+
+**`socketRules` fields** (agentsh v0.19.3+):
+
+Each entry in `socketRules` matches a `socket()` call on all three dimensions simultaneously. Fields are ANDed — unset fields match any value.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | Yes | Unique rule name (duplicate names are rejected at config-load time) |
+| `family` | `string` | Yes | Socket address family (e.g. `'AF_NETLINK'`, `'AF_INET'`) |
+| `type` | `string` | No | Socket type (e.g. `'SOCK_RAW'`, `'SOCK_STREAM'`) |
+| `protocol` | `string` | No | Protocol name (e.g. `'NETLINK_XFRM'`). `NETLINK_*` is only valid with `family: 'AF_NETLINK'`. |
+| `action` | `'errno' \| 'kill' \| 'log' \| 'log_and_kill'` | No | Defaults to `'errno'` |
 
 **Socket family blocking** (agentsh v0.19.0+):
 
@@ -466,6 +544,166 @@ When `blockedSocketFamilies` is **omitted**, agentsh applies a recommended-defau
 | `log_and_kill` | Process killed by `SIGKILL` and emits audit event | `seccomp_socket_family_blocked` (outcome: `killed`) |
 
 `family` accepts either a name (`'AF_VSOCK'`) or a numeric string (`'40'`). Names resolve via a built-in table; numbers in `[0, 64)` are accepted as a fallback. Unknown names and out-of-range numbers are rejected at config-load time. When `ptrace.enabled` is true, the ptrace fallback engine handles family blocking and emits identical audit events. See [agentsh seccomp docs](https://github.com/canyonroad/agentsh/blob/main/docs/seccomp.md#socket-family-blocking) for the canonical reference.
+
+### Mitigation Sets
+
+**Mitigation sets**: Named built-in mitigation YAML files that expand into `socketRules` + `blockedSocketFamilies` server-side. agentsh ships `dirtyfrag-conservative` as a built-in (Openwall Dirty Frag advisory, May 2026 — blocks AF_RXRPC and AF_NETLINK+NETLINK_XFRM with `log_and_kill`). The `sprites`, `freestyle`, `runloop`, and `exe` adapter defaults enable this mitigation by default. To opt out: `mitigationSets: []`. To use the typed constant: `mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative]`.
+
+| Mitigation set | Description |
+|---------------|-------------|
+| `dirtyfrag-conservative` | Openwall Dirty Frag (May 2026): blocks `AF_RXRPC` and `AF_NETLINK+NETLINK_XFRM` with `log_and_kill` |
+
+Custom mitigation YAML files can be loaded from directories listed in `mitigationDirs` (must be absolute paths).
+
+### Network Intercept Config
+
+The `networkIntercept` section controls the agentsh network proxy and eBPF enforcement layer.
+
+```typescript
+serverConfig: {
+  networkIntercept: {
+    enabled: true,                         // Enable network interception
+    proxyPort: 18081,                      // Proxy listen port
+    dnsPort: 18053,                        // DNS proxy listen port
+    tlsInspection: {
+      enabled: true,                       // Enable TLS MITM inspection
+      caCert: '/etc/agentsh/ca.crt',       // Path to CA certificate PEM
+      caKey: '/etc/agentsh/ca.key',        // Path to CA private key PEM
+    },
+    transparent: {
+      enabled: true,                       // Enable transparent proxy mode
+      subnetBase: '10.99.0.0/16',          // Subnet for transparent proxy routing
+    },
+    ebpf: {
+      enabled: true,                       // Enable eBPF enforcement
+      required: false,                     // Fail if eBPF unavailable
+      enforce: true,                       // Enforce policy via eBPF
+      resolveRdns: true,                   // Reverse-DNS resolution in eBPF map
+      enforceWithoutDns: false,            // Enforce even when DNS proxy is bypassed
+      mapAllowEntries: 4096,               // eBPF allow-map capacity
+      mapDenyEntries: 4096,                // eBPF deny-map capacity
+      mapLpmEntries: 1024,                 // eBPF LPM (CIDR) allow-map capacity
+      mapLpmDenyEntries: 1024,             // eBPF LPM deny-map capacity
+      mapDefaultEntries: 256,              // eBPF default-action map capacity
+      dnsRefreshSeconds: 30,               // How often to refresh DNS-resolved IPs in eBPF maps
+      dnsMaxTtlSeconds: 300,               // Cap on DNS TTLs used for eBPF map entries
+    },
+    rateLimits: {
+      enabled: true,                       // Enable rate limiting
+      globalRpm: 6000,                     // Global requests-per-minute limit
+      globalBurst: 200,                    // Global burst allowance
+      perDomain: [                         // Per-domain overrides
+        { domain: 'api.example.com', rpm: 600, burst: 20 },
+      ],
+    },
+  },
+}
+```
+
+**Top-level `networkIntercept` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | — | Enable network interception |
+| `proxyPort` | `number` | — | TCP port the proxy listens on |
+| `dnsPort` | `number` | — | UDP port the DNS proxy listens on |
+| `interceptMode` | `string` | — | Low-level intercept mode hint |
+| `proxyListenAddr` | `string` | — | Listen address for the proxy |
+| `tlsInspection` | `object` | — | TLS inspection config (see below) |
+| `transparent` | `object` | — | Transparent proxy config (see below) |
+| `ebpf` | `object` | — | eBPF enforcement config (see below) |
+| `rateLimits` | `object` | — | Rate limiting config (see below) |
+
+**`tlsInspection` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Enable TLS MITM inspection (requires `caCert`/`caKey`) |
+| `caCert` | `string` | Path to the CA certificate PEM file |
+| `caKey` | `string` | Path to the CA private key PEM file |
+
+**`transparent` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Enable transparent proxy mode |
+| `subnetBase` | `string` | CIDR subnet for transparent routing (e.g. `'10.99.0.0/16'`) |
+
+**`ebpf` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Enable the eBPF network enforcement layer |
+| `required` | `boolean` | Fail provisioning if eBPF is unavailable |
+| `enforce` | `boolean` | Enforce policy decisions via eBPF (vs. audit-only) |
+| `resolveRdns` | `boolean` | Reverse-DNS resolution for IP → domain mapping in eBPF maps |
+| `enforceWithoutDns` | `boolean` | Enforce even when the DNS proxy is bypassed |
+| `mapAllowEntries` | `number` | Capacity of the eBPF allow map |
+| `mapDenyEntries` | `number` | Capacity of the eBPF deny map |
+| `mapLpmEntries` | `number` | Capacity of the eBPF LPM (CIDR) allow map |
+| `mapLpmDenyEntries` | `number` | Capacity of the eBPF LPM deny map |
+| `mapDefaultEntries` | `number` | Capacity of the eBPF default-action map |
+| `dnsRefreshSeconds` | `number` | Interval for refreshing DNS-resolved IPs in eBPF maps |
+| `dnsMaxTtlSeconds` | `number` | Maximum TTL cap applied to DNS entries in eBPF maps |
+
+**`rateLimits` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Enable rate limiting |
+| `globalRpm` | `number` | Global requests-per-minute ceiling across all domains |
+| `globalBurst` | `number` | Global burst allowance (token bucket) |
+| `perDomain` | `Array<{domain, rpm?, burst?}>` | Per-domain RPM and burst overrides |
+
+### FUSE Config
+
+The `fuse` section controls FUSE-based filesystem virtualization.
+
+```typescript
+serverConfig: {
+  fuse: {
+    enabled: true,                         // Enable FUSE filesystem
+    deferred: true,                        // Defer FUSE mount until first session
+    deferredMarkerFile: '/tmp/.agentsh-fuse-enabled',
+    deferredEnableCommand: ['sudo', '/bin/chmod', '666', '/dev/fuse'],
+    mountBaseDir: '/mnt/agentsh',          // Base directory for FUSE mounts
+    audit: {
+      enabled: true,                       // Enable FUSE-level audit
+      mode: 'soft_delete',                 // 'monitor' | 'soft_block' | 'soft_delete' | 'strict'
+      trashPath: '/var/lib/agentsh/trash', // Where soft-deleted files go
+      ttl: '24h',                          // Soft-delete retention duration
+      quota: '5GiB',                       // Max trash directory size
+      strictOnAuditFailure: false,         // Block operation if audit write fails
+      maxEventQueue: 8192,                 // In-memory audit event queue depth
+      hashSmallFilesUnder: '1MiB',         // Hash files below this size for audit records
+    },
+  },
+}
+```
+
+**`fuse` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable FUSE filesystem |
+| `deferred` | `boolean` | — | Defer FUSE mount to first session start |
+| `deferredMarkerFile` | `string` | — | Path to marker file indicating FUSE is ready |
+| `deferredEnableCommand` | `string[]` | — | Command to run to enable FUSE (e.g. `chmod 666 /dev/fuse`) |
+| `mountBaseDir` | `string` | — | Override the base directory for FUSE workspace mounts |
+| `audit` | `object` | — | FUSE-level audit config (see below) |
+
+**`fuse.audit` fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | — | Enable FUSE audit logging |
+| `mode` | `'monitor' \| 'soft_block' \| 'soft_delete' \| 'strict'` | — | Audit enforcement mode. `monitor`: log only. `soft_block`: block denied writes. `soft_delete`: redirect deletes to trash. `strict`: block and fail hard on audit errors. |
+| `trashPath` | `string` | — | Directory where soft-deleted files are moved |
+| `ttl` | `string` | — | Retention duration for soft-deleted files (e.g. `'24h'`) |
+| `quota` | `string` | — | Maximum trash directory size (e.g. `'5GiB'`) |
+| `strictOnAuditFailure` | `boolean` | — | Block the file operation if writing the audit record fails |
+| `maxEventQueue` | `number` | — | Depth of the in-memory audit event queue |
+| `hashSmallFilesUnder` | `string` | — | Hash file contents for audit records when file is below this size (e.g. `'1MiB'`) |
 
 ### Ptrace Config
 
@@ -774,3 +1012,25 @@ npm run test:e2e:sprites
 
 - `test:e2e:modal` requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. The runner uses `MODAL_PYTHON` when set, otherwise it auto-detects `.venv-modal/bin/python3` before falling back to `python3`.
 - `test:e2e:sprites` requires `SPRITES_TOKEN` or `FLY_API_TOKEN`. If `SPRITES_NAME` is missing or stale, the runner can auto-create and delete a temporary sprite when `FLY_API_TOKEN` and `SPRITES_ORG` are set.
+
+## Constants and Exports
+
+### `KNOWN_MITIGATIONS`
+
+A typed constant object mapping friendly camelCase names to the raw agentsh mitigation set IDs. Use these in `seccompDetails.mitigationSets` instead of raw strings to get autocomplete and a single update point when agentsh ships new built-ins.
+
+```typescript
+import { KNOWN_MITIGATIONS } from '@agentsh/secure-sandbox';
+
+await secureSandbox(adapter, {
+  seccompDetails: {
+    mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
+  },
+});
+```
+
+| Constant | Raw value | Description |
+|----------|-----------|-------------|
+| `KNOWN_MITIGATIONS.dirtyfragConservative` | `'dirtyfrag-conservative'` | Openwall Dirty Frag advisory (May 2026): blocks `AF_RXRPC` and `AF_NETLINK+NETLINK_XFRM` with `log_and_kill` |
+
+`KnownMitigation` is exported as a type union of all known raw values (`'dirtyfrag-conservative' | ...`). The `sprites`, `freestyle`, `runloop`, and `exe` adapter defaults include `dirtyfrag-conservative` automatically. To opt out: `mitigationSets: []`.
