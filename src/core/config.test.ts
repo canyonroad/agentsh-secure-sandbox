@@ -836,6 +836,22 @@ describe('generateServerConfig — extended fields', () => {
     const parsed = yaml.load(result) as any;
     expect(parsed.audit.integrity.aws_kms.encrypted_dek_file).toBeUndefined();
   });
+
+  it('emits sandboxLimits.maxDiskIoMbps and maxNetworkMbps', () => {
+    const result = generateServerConfig({
+      sandboxLimits: { maxDiskIoMbps: 100, maxNetworkMbps: 50 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.limits.max_disk_io_mbps).toBe(100);
+    expect(parsed.sandbox.limits.max_network_mbps).toBe(50);
+  });
+
+  it('omits maxDiskIoMbps and maxNetworkMbps when unset', () => {
+    const result = generateServerConfig({ sandboxLimits: { maxMemoryMb: 512 } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.limits.max_disk_io_mbps).toBeUndefined();
+    expect(parsed.sandbox.limits.max_network_mbps).toBeUndefined();
+  });
 });
 
 describe('generateServerConfig — validation', () => {

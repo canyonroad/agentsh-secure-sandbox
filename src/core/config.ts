@@ -37,7 +37,7 @@ export interface ServerConfigOpts {
       gcpKms?: { keyName: string; encryptedDekFile?: string };
     };
   };
-  sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number };
+  sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number; maxDiskIoMbps?: number; maxNetworkMbps?: number };
   allowDegraded?: boolean;
   fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
@@ -333,6 +333,8 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       ...(opts.sandboxLimits.maxMemoryMb !== undefined && { max_memory_mb: opts.sandboxLimits.maxMemoryMb }),
       ...(opts.sandboxLimits.maxCpuPercent !== undefined && { max_cpu_percent: opts.sandboxLimits.maxCpuPercent }),
       ...(opts.sandboxLimits.maxProcesses !== undefined && { max_processes: opts.sandboxLimits.maxProcesses }),
+      ...(opts.sandboxLimits.maxDiskIoMbps !== undefined && { max_disk_io_mbps: opts.sandboxLimits.maxDiskIoMbps }),
+      ...(opts.sandboxLimits.maxNetworkMbps !== undefined && { max_network_mbps: opts.sandboxLimits.maxNetworkMbps }),
     };
   }
 
