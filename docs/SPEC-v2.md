@@ -162,7 +162,7 @@ It does not bundle the binary in the npm package.
 | Setting               | Default                                                       | Override                      |
 | --------------------- | ------------------------------------------------------------- | ----------------------------- |
 | Binary source         | `github.com/canyonroad/agentsh/releases/download/{version}/`  | `AGENTSH_BINARY_URL` env var  |
-| Version               | Pinned per library release (currently `0.19.2`)               | `agentshVersion` in config    |
+| Version               | Pinned per library release (currently `0.19.3`)               | `agentshVersion` in config    |
 | Platform detection    | `uname -m` inside sandbox → `linux_amd64` or `linux_arm64`   | `agentshArch` in config       |
 | Checksum verification | SHA256, pinned per version in library source                  | `agentshChecksum` in config   |
 
@@ -181,11 +181,11 @@ the library throws `IntegrityError` with the message:
 "No pinned checksum for agentsh vX.Y.Z. Provide `agentshChecksum`
 explicitly or use `skipIntegrityCheck: true`."
 
-Checksums for v0.19.2 (from GitHub release assets):
+Checksums for v0.19.3 (from GitHub release assets):
 
 ```
-linux_amd64.tar.gz: 7e5b77209c6b00aab06802fb278078b3c581bdd0b57d10dc9297de80cf9f589a
-linux_arm64.tar.gz: 30a301e93ef42cad7c47ac98c609970c77e5065b6a4b9f819d6462b2e378fc50
+linux_amd64.tar.gz: 9070c67dc9d78b5bee11fe4a071eb04b5f20ea9192727d6ed214f31f55b533db
+linux_arm64.tar.gz: 23e22059403ebea3f2ed7cc5932ad9917bd6641bb5f3eb3f5b1845555b98b2a6
 ```
 
 If `AGENTSH_BINARY_URL` is set (custom download location), checksum
