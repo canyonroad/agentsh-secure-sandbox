@@ -838,6 +838,63 @@ describe('generateServerConfig — extended fields', () => {
   });
 });
 
+describe('generateServerConfig — validation', () => {
+  it('throws when mitigationDirs has a non-absolute path', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { mitigationDirs: ['etc/agentsh/mitigations'] },
+    })).toThrow(/mitigationDirs\[0\].*absolute path.*"etc\/agentsh\/mitigations"/);
+  });
+
+  it('throws when socketRules contain a duplicate name', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_VSOCK' },
+          { name: 'r1', family: 'AF_RXRPC' },
+        ],
+      },
+    })).toThrow(/socketRules\[1\].*duplicate name "r1"/);
+  });
+
+  it('throws when NETLINK_* protocol is used outside AF_NETLINK', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_INET', protocol: 'NETLINK_XFRM' },
+        ],
+      },
+    })).toThrow(/socketRules\[0\].protocol.*NETLINK_\* is only valid with family AF_NETLINK/);
+  });
+
+  it('throws when syscalls.defaultAction=allow without a block list', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'allow' } },
+    })).toThrow(/syscalls.*defaultAction "allow" requires non-empty block list/);
+  });
+
+  it('throws when syscalls.defaultAction=allow with empty block list', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'allow', block: [] } },
+    })).toThrow(/syscalls.*defaultAction "allow" requires non-empty block list/);
+  });
+
+  it('does not throw when syscalls.defaultAction=block with empty block list (no-op block)', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: { syscalls: { defaultAction: 'block' } },
+    })).not.toThrow();
+  });
+
+  it('does not throw when NETLINK_XFRM is used with AF_NETLINK', () => {
+    expect(() => generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'r1', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM' },
+        ],
+      },
+    })).not.toThrow();
+  });
+});
+
 describe('defaultThreatFeeds', () => {
   it('has urlhaus and phishing feeds', () => {
     expect(defaultThreatFeeds.feeds).toHaveLength(2);

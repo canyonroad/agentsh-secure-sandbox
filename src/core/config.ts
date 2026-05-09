@@ -167,6 +167,33 @@ function providerConfigToSnakeCase(config: ProviderConfig): Record<string, unkno
   return result;
 }
 
+function validateSeccompDetails(seccomp: NonNullable<ServerConfigOpts['seccompDetails']>): void {
+  if (seccomp.mitigationDirs) {
+    seccomp.mitigationDirs.forEach((path, i) => {
+      if (!path.startsWith('/')) {
+        throw new Error(`seccompDetails.mitigationDirs[${i}]: must be an absolute path, got "${path}"`);
+      }
+    });
+  }
+  if (seccomp.socketRules) {
+    const names = new Set<string>();
+    seccomp.socketRules.forEach((r, i) => {
+      if (names.has(r.name)) {
+        throw new Error(`seccompDetails.socketRules[${i}].name: duplicate name "${r.name}"`);
+      }
+      names.add(r.name);
+      if (r.protocol?.startsWith('NETLINK_') && r.family !== 'AF_NETLINK') {
+        throw new Error(`seccompDetails.socketRules[${i}].protocol: NETLINK_* is only valid with family AF_NETLINK`);
+      }
+    });
+  }
+  if (seccomp.syscalls) {
+    if (seccomp.syscalls.defaultAction === 'allow' && (!seccomp.syscalls.block || seccomp.syscalls.block.length === 0)) {
+      throw new Error('seccompDetails.syscalls: defaultAction "allow" requires non-empty block list');
+    }
+  }
+}
+
 export function generateServerConfig(opts: ServerConfigOpts): string {
   const config: Record<string, unknown> = {
     server: {
@@ -328,6 +355,7 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   // Seccomp details — providing seccompDetails implicitly enables seccomp
   // (unless ptrace is also enabled, since they're mutually exclusive)
   if (opts.seccompDetails) {
+    validateSeccompDetails(opts.seccompDetails);
     const sec = (config.sandbox as any).seccomp;
     if (!opts.ptrace?.enabled) sec.enabled = true;
     if (opts.seccompDetails.mode !== undefined) sec.mode = opts.seccompDetails.mode;
