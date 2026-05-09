@@ -39,7 +39,23 @@ export interface ServerConfigOpts {
   };
   sandboxLimits?: { maxMemoryMb?: number; maxCpuPercent?: number; maxProcesses?: number; maxDiskIoMbps?: number; maxNetworkMbps?: number };
   allowDegraded?: boolean;
-  fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
+  fuse?: {
+    enabled?: boolean;
+    deferred?: boolean;
+    deferredMarkerFile?: string;
+    deferredEnableCommand?: string[];
+    mountBaseDir?: string;
+    audit?: {
+      enabled?: boolean;
+      mode?: 'monitor' | 'soft_block' | 'soft_delete' | 'strict';
+      trashPath?: string;
+      ttl?: string;
+      quota?: string;
+      strictOnAuditFailure?: boolean;
+      maxEventQueue?: number;
+      hashSmallFilesUnder?: string;
+    };
+  };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
   seccompDetails?: {
     mode?: 'enforce' | 'audit' | 'disabled';
@@ -345,6 +361,19 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.fuse.deferred !== undefined) fuseObj.deferred = opts.fuse.deferred;
     if (opts.fuse.deferredMarkerFile) fuseObj.deferred_marker_file = opts.fuse.deferredMarkerFile;
     if (opts.fuse.deferredEnableCommand) fuseObj.deferred_enable_command = opts.fuse.deferredEnableCommand;
+    if (opts.fuse.mountBaseDir) fuseObj.mount_base_dir = opts.fuse.mountBaseDir;
+    if (opts.fuse.audit) {
+      fuseObj.audit = {
+        ...(opts.fuse.audit.enabled !== undefined && { enabled: opts.fuse.audit.enabled }),
+        ...(opts.fuse.audit.mode !== undefined && { mode: opts.fuse.audit.mode }),
+        ...(opts.fuse.audit.trashPath !== undefined && { trash_path: opts.fuse.audit.trashPath }),
+        ...(opts.fuse.audit.ttl !== undefined && { ttl: opts.fuse.audit.ttl }),
+        ...(opts.fuse.audit.quota !== undefined && { quota: opts.fuse.audit.quota }),
+        ...(opts.fuse.audit.strictOnAuditFailure !== undefined && { strict_on_audit_failure: opts.fuse.audit.strictOnAuditFailure }),
+        ...(opts.fuse.audit.maxEventQueue !== undefined && { max_event_queue: opts.fuse.audit.maxEventQueue }),
+        ...(opts.fuse.audit.hashSmallFilesUnder !== undefined && { hash_small_files_under: opts.fuse.audit.hashSmallFilesUnder }),
+      };
+    }
   }
 
   // Network intercept

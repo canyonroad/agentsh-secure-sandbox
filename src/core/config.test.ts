@@ -852,6 +852,58 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.limits.max_disk_io_mbps).toBeUndefined();
     expect(parsed.sandbox.limits.max_network_mbps).toBeUndefined();
   });
+
+  it('emits fuse.mount_base_dir when set', () => {
+    const result = generateServerConfig({
+      fuse: { enabled: true, mountBaseDir: '/var/lib/agentsh/mounts' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.mount_base_dir).toBe('/var/lib/agentsh/mounts');
+  });
+
+  it('emits full fuse.audit sub-config', () => {
+    const result = generateServerConfig({
+      fuse: {
+        enabled: true,
+        audit: {
+          enabled: true,
+          mode: 'soft_block',
+          trashPath: '/var/lib/agentsh/trash',
+          ttl: '24h',
+          quota: '10GiB',
+          strictOnAuditFailure: true,
+          maxEventQueue: 1024,
+          hashSmallFilesUnder: '1MiB',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toEqual({
+      enabled: true,
+      mode: 'soft_block',
+      trash_path: '/var/lib/agentsh/trash',
+      ttl: '24h',
+      quota: '10GiB',
+      strict_on_audit_failure: true,
+      max_event_queue: 1024,
+      hash_small_files_under: '1MiB',
+    });
+  });
+
+  it('emits partial fuse.audit (mode only)', () => {
+    const result = generateServerConfig({
+      fuse: { audit: { mode: 'monitor' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toEqual({ mode: 'monitor' });
+  });
+
+  it('omits fuse.audit and mount_base_dir when unset', () => {
+    const result = generateServerConfig({ fuse: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.fuse.audit).toBeUndefined();
+    expect(parsed.sandbox.fuse.mount_base_dir).toBeUndefined();
+  });
 });
 
 describe('generateServerConfig — validation', () => {
