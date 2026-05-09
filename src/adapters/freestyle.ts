@@ -6,7 +6,7 @@ import { serializePolicy, systemPolicyYaml } from '../policies/serialize.js';
 import { shellEscape, envPrefix } from '../core/shell.js';
 import { CHECKSUMS } from '../core/integrity.js';
 
-const AGENTSH_VERSION = '0.19.2';
+const AGENTSH_VERSION = '0.19.3';
 const AGENTSH_SHA256 = CHECKSUMS[AGENTSH_VERSION].linux_amd64;
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;

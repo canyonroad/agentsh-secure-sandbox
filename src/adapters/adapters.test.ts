@@ -1231,7 +1231,7 @@ describe('provider defaults', () => {
       configureFreestyleSpec(spec);
       const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
       const files = filesCall!.args[0];
-      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.19.2"');
+      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.19.3"');
       expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
       expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
       expect(files['/etc/agentsh/policy.yml'].content).toContain('/home/user');
