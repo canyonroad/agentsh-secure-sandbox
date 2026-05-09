@@ -118,8 +118,8 @@ export interface ServerConfigOpts {
     mitigationSets?: string[];
     mitigationDirs?: string[];
   };
-  cgroups?: { enabled?: boolean };
-  unixSockets?: { enabled?: boolean };
+  cgroups?: { enabled?: boolean; basePath?: string };
+  unixSockets?: { enabled?: boolean; wrapperBin?: string };
   ptrace?: {
     enabled?: boolean;
     attachMode?: 'children' | 'pid';
@@ -538,12 +538,18 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
 
   // Cgroups
   if (opts.cgroups) {
-    (config.sandbox as any).cgroups = { ...opts.cgroups };
+    (config.sandbox as any).cgroups = {
+      ...(opts.cgroups.enabled !== undefined && { enabled: opts.cgroups.enabled }),
+      ...(opts.cgroups.basePath !== undefined && { base_path: opts.cgroups.basePath }),
+    };
   }
 
   // Unix sockets
   if (opts.unixSockets) {
-    (config.sandbox as any).unix_sockets = { ...opts.unixSockets };
+    (config.sandbox as any).unix_sockets = {
+      ...(opts.unixSockets.enabled !== undefined && { enabled: opts.unixSockets.enabled }),
+      ...(opts.unixSockets.wrapperBin !== undefined && { wrapper_bin: opts.unixSockets.wrapperBin }),
+    };
   }
 
   // Ptrace

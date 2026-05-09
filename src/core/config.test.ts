@@ -1044,6 +1044,37 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.fuse.audit).toBeUndefined();
     expect(parsed.sandbox.fuse.mount_base_dir).toBeUndefined();
   });
+
+  it('emits cgroups.base_path when set', () => {
+    const result = generateServerConfig({
+      cgroups: { enabled: true, basePath: '/sys/fs/cgroup/agentsh' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.cgroups).toEqual({ enabled: true, base_path: '/sys/fs/cgroup/agentsh' });
+  });
+
+  it('omits cgroups.base_path when unset', () => {
+    const result = generateServerConfig({ cgroups: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.cgroups).toEqual({ enabled: true });
+  });
+
+  it('emits unix_sockets.wrapper_bin when set', () => {
+    const result = generateServerConfig({
+      unixSockets: { enabled: true, wrapperBin: '/usr/local/bin/agentsh-unixwrap' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.unix_sockets).toEqual({
+      enabled: true,
+      wrapper_bin: '/usr/local/bin/agentsh-unixwrap',
+    });
+  });
+
+  it('omits unix_sockets.wrapper_bin when unset', () => {
+    const result = generateServerConfig({ unixSockets: { enabled: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.unix_sockets).toEqual({ enabled: true });
+  });
 });
 
 describe('generateServerConfig — validation', () => {
