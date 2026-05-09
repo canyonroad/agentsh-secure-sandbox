@@ -765,6 +765,56 @@ describe('generateServerConfig — extended fields', () => {
     });
   });
 
+  it('emits execveDetails sub-fields alongside execve: true', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        execve: true,
+        execveDetails: {
+          maxArgc: 64,
+          maxArgvBytes: 8192,
+          onTruncated: 'deny',
+          approvalTimeout: '30s',
+          approvalTimeoutAction: 'deny',
+          internalBypass: ['/usr/local/bin/agentsh'],
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.execve).toEqual({
+      enabled: true,
+      max_argc: 64,
+      max_argv_bytes: 8192,
+      on_truncated: 'deny',
+      approval_timeout: '30s',
+      approval_timeout_action: 'deny',
+      internal_bypass: ['/usr/local/bin/agentsh'],
+    });
+  });
+
+  it('execve: true alone still emits { enabled: true } only (back-compat)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true });
+  });
+
+  it('execveDetails alone (no execve bool) emits sub-fields without enabled', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execveDetails: { maxArgc: 32 } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.execve).toEqual({ max_argc: 32 });
+  });
+
+  it('execveDetails alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execveDetails: { maxArgc: 32 } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
   it('omits audit.integrity when not set', () => {
     const result = generateServerConfig({ audit: { enabled: true } });
     const parsed = yaml.load(result) as any;

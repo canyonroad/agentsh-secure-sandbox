@@ -45,6 +45,14 @@ export interface ServerConfigOpts {
     mode?: 'enforce' | 'audit' | 'disabled';
     unixSocket?: { enabled?: boolean; action?: 'enforce' | 'audit' };
     execve?: boolean;
+    execveDetails?: {
+      maxArgc?: number;
+      maxArgvBytes?: number;
+      onTruncated?: 'deny' | 'allow' | 'approval';
+      approvalTimeout?: string;
+      approvalTimeoutAction?: 'deny' | 'allow';
+      internalBypass?: string[];
+    };
     fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
     blockedSocketFamilies?: Array<{
       family: string;
@@ -341,8 +349,19 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     // ExecveConfig struct (with `enabled` plus argv-capture sub-fields).
     // Wrap the bool we accept from callers into the struct shape; we only
     // need `enabled` since the other fields default to zero values.
-    if (opts.seccompDetails.execve !== undefined) {
-      sec.execve = { enabled: opts.seccompDetails.execve };
+    if (opts.seccompDetails.execve !== undefined || opts.seccompDetails.execveDetails) {
+      const ex: Record<string, unknown> = {};
+      if (opts.seccompDetails.execve !== undefined) ex.enabled = opts.seccompDetails.execve;
+      const ed = opts.seccompDetails.execveDetails;
+      if (ed) {
+        if (ed.maxArgc !== undefined) ex.max_argc = ed.maxArgc;
+        if (ed.maxArgvBytes !== undefined) ex.max_argv_bytes = ed.maxArgvBytes;
+        if (ed.onTruncated !== undefined) ex.on_truncated = ed.onTruncated;
+        if (ed.approvalTimeout !== undefined) ex.approval_timeout = ed.approvalTimeout;
+        if (ed.approvalTimeoutAction !== undefined) ex.approval_timeout_action = ed.approvalTimeoutAction;
+        if (ed.internalBypass !== undefined) ex.internal_bypass = [...ed.internalBypass];
+      }
+      sec.execve = ex;
     }
     if (opts.seccompDetails.fileMonitor) {
       sec.file_monitor = {
