@@ -431,6 +431,41 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.unix_socket).toEqual({ action: 'enforce' });
   });
 
+  it('emits seccomp.syscalls with full sub-config', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        syscalls: {
+          defaultAction: 'allow',
+          block: ['ptrace', 'process_vm_readv'],
+          allow: ['openat'],
+          onBlock: 'log_and_kill',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.syscalls).toEqual({
+      default_action: 'allow',
+      block: ['ptrace', 'process_vm_readv'],
+      allow: ['openat'],
+      on_block: 'log_and_kill',
+    });
+  });
+
+  it('emits partial syscalls config (block only)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { syscalls: { block: ['ptrace'] } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.syscalls).toEqual({ block: ['ptrace'] });
+  });
+
+  it('omits seccomp.syscalls when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.syscalls).toBeUndefined();
+  });
+
   it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
     const result = generateServerConfig({
       ptrace: { enabled: true },

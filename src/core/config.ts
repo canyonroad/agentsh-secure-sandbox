@@ -57,6 +57,12 @@ export interface ServerConfigOpts {
       protocol?: string;
       action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
     }>;
+    syscalls?: {
+      defaultAction?: 'allow' | 'block';
+      block?: string[];
+      allow?: string[];
+      onBlock?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+    };
     mitigationSets?: string[];
     mitigationDirs?: string[];
   };
@@ -321,6 +327,14 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       sec.unix_socket = {
         ...(opts.seccompDetails.unixSocket.enabled !== undefined && { enabled: opts.seccompDetails.unixSocket.enabled }),
         ...(opts.seccompDetails.unixSocket.action !== undefined && { action: opts.seccompDetails.unixSocket.action }),
+      };
+    }
+    if (opts.seccompDetails.syscalls) {
+      sec.syscalls = {
+        ...(opts.seccompDetails.syscalls.defaultAction !== undefined && { default_action: opts.seccompDetails.syscalls.defaultAction }),
+        ...(opts.seccompDetails.syscalls.block !== undefined && { block: [...opts.seccompDetails.syscalls.block] }),
+        ...(opts.seccompDetails.syscalls.allow !== undefined && { allow: [...opts.seccompDetails.syscalls.allow] }),
+        ...(opts.seccompDetails.syscalls.onBlock !== undefined && { on_block: opts.seccompDetails.syscalls.onBlock }),
       };
     }
     // agentsh v0.17.0 changed seccomp.execve from a bare bool into an
