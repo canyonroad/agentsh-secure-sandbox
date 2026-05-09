@@ -42,6 +42,8 @@ export interface ServerConfigOpts {
   fuse?: { enabled?: boolean; deferred?: boolean; deferredMarkerFile?: string; deferredEnableCommand?: string[] };
   networkIntercept?: { interceptMode?: string; proxyListenAddr?: string };
   seccompDetails?: {
+    mode?: 'enforce' | 'audit' | 'disabled';
+    unixSocket?: { enabled?: boolean; action?: 'enforce' | 'audit' };
     execve?: boolean;
     fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
     blockedSocketFamilies?: Array<{
@@ -314,6 +316,13 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
   if (opts.seccompDetails) {
     const sec = (config.sandbox as any).seccomp;
     if (!opts.ptrace?.enabled) sec.enabled = true;
+    if (opts.seccompDetails.mode !== undefined) sec.mode = opts.seccompDetails.mode;
+    if (opts.seccompDetails.unixSocket) {
+      sec.unix_socket = {
+        ...(opts.seccompDetails.unixSocket.enabled !== undefined && { enabled: opts.seccompDetails.unixSocket.enabled }),
+        ...(opts.seccompDetails.unixSocket.action !== undefined && { action: opts.seccompDetails.unixSocket.action }),
+      };
+    }
     // agentsh v0.17.0 changed seccomp.execve from a bare bool into an
     // ExecveConfig struct (with `enabled` plus argv-capture sub-fields).
     // Wrap the bool we accept from callers into the struct shape; we only

@@ -400,6 +400,37 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.enabled).toBe(true);
   });
 
+  it('emits seccomp.mode when set', () => {
+    const result = generateServerConfig({
+      seccompDetails: { mode: 'audit' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.mode).toBe('audit');
+  });
+
+  it('omits seccomp.mode when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.mode).toBeUndefined();
+  });
+
+  it('emits seccomp.unix_socket sub-config', () => {
+    const result = generateServerConfig({
+      seccompDetails: { unixSocket: { enabled: true, action: 'audit' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.unix_socket).toEqual({ enabled: true, action: 'audit' });
+  });
+
+  it('emits partial unix_socket (action only)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { unixSocket: { action: 'enforce' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.unix_socket).toEqual({ action: 'enforce' });
+  });
+
   it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
     const result = generateServerConfig({
       ptrace: { enabled: true },
