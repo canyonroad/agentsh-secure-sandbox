@@ -799,12 +799,14 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true });
   });
 
-  it('execveDetails alone (no execve bool) emits sub-fields without enabled', () => {
+  it('execveDetails alone auto-enables execve enforcement', () => {
     const result = generateServerConfig({
       seccompDetails: { execveDetails: { maxArgc: 32 } },
     });
     const parsed = yaml.load(result) as any;
-    expect(parsed.sandbox.seccomp.execve).toEqual({ max_argc: 32 });
+    // Auto-enable: setting argv-capture sub-fields without enabling the enforcer
+    // would silently no-op since agentsh defaults `enabled: false`.
+    expect(parsed.sandbox.seccomp.execve).toEqual({ enabled: true, max_argc: 32 });
   });
 
   it('execveDetails alone implicitly enables seccomp', () => {

@@ -346,12 +346,18 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       };
     }
     // agentsh v0.17.0 changed seccomp.execve from a bare bool into an
-    // ExecveConfig struct (with `enabled` plus argv-capture sub-fields).
-    // Wrap the bool we accept from callers into the struct shape; we only
-    // need `enabled` since the other fields default to zero values.
+    // ExecveConfig struct (`enabled` + argv-capture sub-fields). Callers
+    // can set `execve: true` for the simple toggle, `execveDetails: {...}`
+    // for the sub-fields, or both. When only `execveDetails` is provided
+    // we auto-set `enabled: true` — otherwise agentsh would see Go's zero
+    // value (false) and ignore the sub-fields silently.
     if (opts.seccompDetails.execve !== undefined || opts.seccompDetails.execveDetails) {
       const ex: Record<string, unknown> = {};
-      if (opts.seccompDetails.execve !== undefined) ex.enabled = opts.seccompDetails.execve;
+      if (opts.seccompDetails.execve !== undefined) {
+        ex.enabled = opts.seccompDetails.execve;
+      } else if (opts.seccompDetails.execveDetails) {
+        ex.enabled = true;
+      }
       const ed = opts.seccompDetails.execveDetails;
       if (ed) {
         if (ed.maxArgc !== undefined) ex.max_argc = ed.maxArgc;
