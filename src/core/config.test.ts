@@ -337,6 +337,41 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.blocked_socket_families).toEqual([{ family: 'AF_VSOCK' }]);
   });
 
+  it('emits socket_rules with all optional fields when set', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        socketRules: [
+          { name: 'block-rxrpc', family: 'AF_RXRPC', action: 'log_and_kill' },
+          { name: 'block-xfrm', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM', action: 'log_and_kill' },
+          { name: 'block-raw-icmp', family: 'AF_INET', type: 'SOCK_RAW' },
+        ],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+    expect(parsed.sandbox.seccomp.socket_rules).toEqual([
+      { name: 'block-rxrpc', family: 'AF_RXRPC', action: 'log_and_kill' },
+      { name: 'block-xfrm', family: 'AF_NETLINK', protocol: 'NETLINK_XFRM', action: 'log_and_kill' },
+      { name: 'block-raw-icmp', family: 'AF_INET', type: 'SOCK_RAW' },
+    ]);
+  });
+
+  it('omits socket_rules when unset', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.socket_rules).toBeUndefined();
+  });
+
+  it('socketRules alone implicitly enables seccomp', () => {
+    const result = generateServerConfig({
+      seccompDetails: {
+        socketRules: [{ name: 'r1', family: 'AF_VSOCK' }],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.enabled).toBe(true);
+  });
+
   it('ptrace precedence: seccomp stays disabled even with blockedSocketFamilies set', () => {
     const result = generateServerConfig({
       ptrace: { enabled: true },

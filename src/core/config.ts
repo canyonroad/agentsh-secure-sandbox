@@ -48,6 +48,13 @@ export interface ServerConfigOpts {
       family: string;
       action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
     }>;
+    socketRules?: Array<{
+      name: string;
+      family: string;
+      type?: string;
+      protocol?: string;
+      action?: 'errno' | 'kill' | 'log' | 'log_and_kill';
+    }>;
   };
   cgroups?: { enabled?: boolean };
   unixSockets?: { enabled?: boolean };
@@ -325,6 +332,15 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
       sec.blocked_socket_families = opts.seccompDetails.blockedSocketFamilies.map(e => ({
         family: e.family,
         ...(e.action !== undefined && { action: e.action }),
+      }));
+    }
+    if (opts.seccompDetails.socketRules !== undefined) {
+      sec.socket_rules = opts.seccompDetails.socketRules.map(r => ({
+        name: r.name,
+        family: r.family,
+        ...(r.type !== undefined && { type: r.type }),
+        ...(r.protocol !== undefined && { protocol: r.protocol }),
+        ...(r.action !== undefined && { action: r.action }),
       }));
     }
   }
