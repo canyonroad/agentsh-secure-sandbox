@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DatabaseRuleSchema, DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
+import { DatabaseConnectionRuleSchema, DatabaseRuleSchema, DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
 import { PolicyValidationError } from '../core/errors.js';
 
 describe('PolicyDefinitionSchema', () => {
@@ -953,6 +953,65 @@ describe('DatabaseRuleSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect((result.data as any).newFutureField).toBe(42);
+    }
+  });
+});
+
+describe('DatabaseConnectionRuleSchema', () => {
+  const minimal = {
+    name: 'allow-connects',
+    decision: 'allow' as const,
+  };
+
+  it('accepts a minimal rule', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all matchKind values', () => {
+    for (const k of ['connect', 'cancel', 'replication'] as const) {
+      const result = DatabaseConnectionRuleSchema.safeParse({ ...minimal, matchKind: k });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts decision enum without redirect', () => {
+    for (const d of ['allow', 'deny', 'approve', 'audit'] as const) {
+      const result = DatabaseConnectionRuleSchema.safeParse({ ...minimal, decision: d });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects decision: redirect (not supported on connection rules)', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      decision: 'redirect',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all visibility-restricted optional fields', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      dbService: 'pg-main',
+      dbUser: ['app', 'reader'],
+      database: 'production',
+      applicationName: 'web-*',
+      clientIdentity: 'spiffe://cluster/agent',
+      message: 'denied',
+      timeout: '60s',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      newFutureField: 'whatever',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe('whatever');
     }
   });
 });

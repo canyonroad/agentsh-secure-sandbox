@@ -367,6 +367,24 @@ export const DatabaseRuleSchema = z
   })
   .passthrough();
 
+const DbConnectionDecision = z.enum(['allow', 'deny', 'approve', 'audit']);
+const DbMatchKind = z.enum(['connect', 'cancel', 'replication']);
+
+export const DatabaseConnectionRuleSchema = z
+  .object({
+    name: z.string(),
+    dbService: z.string().optional(),
+    matchKind: DbMatchKind.optional(),
+    dbUser: z.array(z.string()).optional(),
+    database: z.string().optional(),
+    applicationName: z.string().optional(),
+    clientIdentity: z.string().optional(),
+    decision: DbConnectionDecision,
+    message: z.string().optional(),
+    timeout: z.string().optional(),
+  })
+  .passthrough();
+
 // ─── PolicyDefinition ───────────────────────────────────────
 
 export const PolicyDefinitionSchema = z
