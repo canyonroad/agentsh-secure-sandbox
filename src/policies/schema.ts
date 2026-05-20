@@ -325,6 +325,48 @@ export const DbServiceDefSchema = z
   })
   .passthrough();
 
+const DbDecision = z.enum([
+  'allow',
+  'deny',
+  'approve',
+  'audit',
+  'redirect',
+]);
+
+const DbObjectResolution = z.enum([
+  'qualified_syntactic',
+  'unqualified_syntactic',
+  'ambiguous_after_search_path',
+  'maybe_temp_shadowed',
+  'unresolved',
+  'catalog_resolved',
+  '*',
+]);
+
+const DbDenyModeInTx = z.enum(['terminate', 'rollback_then_continue']);
+
+export const DatabaseRuleSchema = z
+  .object({
+    name: z.string(),
+    dbService: z.string().optional(),
+    dbFamily: z.string().optional(),
+    dbDialect: z.string().optional(),
+    schemas: z.array(z.string()).optional(),
+    objects: z.array(z.string()).optional(),
+    relations: z.array(z.string()).optional(),
+    functions: z.array(z.string()).optional(),
+    operations: z.array(z.string()),
+    subtypes: z.array(z.string()).optional(),
+    matchObjectResolution: DbObjectResolution.optional(),
+    decision: DbDecision,
+    message: z.string().optional(),
+    timeout: z.string().optional(),
+    redirect: z.object({ relation: z.string() }).optional(),
+    acknowledgeAuditOnDangerous: z.boolean().optional(),
+    denyModeInTx: DbDenyModeInTx.optional(),
+  })
+  .passthrough();
+
 // ─── PolicyDefinition ───────────────────────────────────────
 
 export const PolicyDefinitionSchema = z

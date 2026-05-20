@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
+import { DatabaseRuleSchema, DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
 import { PolicyValidationError } from '../core/errors.js';
 
 describe('PolicyDefinitionSchema', () => {
@@ -868,6 +868,91 @@ describe('DbServiceDefSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect((result.data as any).newFutureField).toBe('whatever');
+    }
+  });
+});
+
+describe('DatabaseRuleSchema', () => {
+  const minimal = {
+    name: 'allow-reads',
+    operations: ['read'],
+    decision: 'allow' as const,
+  };
+
+  it('accepts a minimal rule', () => {
+    const result = DatabaseRuleSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts every documented enum value for decision', () => {
+    for (const decision of ['allow', 'deny', 'approve', 'audit', 'redirect'] as const) {
+      const result = DatabaseRuleSchema.safeParse({
+        name: `r-${decision}`,
+        operations: ['read'],
+        decision,
+        ...(decision === 'redirect' ? { redirect: { relation: 'public.canonical' } } : {}),
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects unknown decision values', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      decision: 'maybe',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts every documented matchObjectResolution value', () => {
+    for (const tag of [
+      'qualified_syntactic',
+      'unqualified_syntactic',
+      'ambiguous_after_search_path',
+      'maybe_temp_shadowed',
+      'unresolved',
+      'catalog_resolved',
+      '*',
+    ] as const) {
+      const result = DatabaseRuleSchema.safeParse({
+        ...minimal,
+        matchObjectResolution: tag,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts denyModeInTx enum values', () => {
+    for (const m of ['terminate', 'rollback_then_continue'] as const) {
+      const result = DatabaseRuleSchema.safeParse({ ...minimal, denyModeInTx: m });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts open-vocab operations (not constrained to a fixed enum)', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      operations: ['my_future_operation_name'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts open-vocab subtypes', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      subtypes: ['my_subtype'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      newFutureField: 42,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe(42);
     }
   });
 });
