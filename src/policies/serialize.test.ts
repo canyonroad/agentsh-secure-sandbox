@@ -826,3 +826,118 @@ describe('serializePolicy — dbServices', () => {
     expect(yaml.load(resultB) as any).not.toHaveProperty('db_services');
   });
 });
+
+describe('serializePolicy — databaseRules', () => {
+  it('emits a minimal rule with only required fields', () => {
+    const result = serializePolicy({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'allow' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules).toEqual([
+      { name: 'r1', operations: ['read'], decision: 'allow' },
+    ]);
+  });
+
+  it('emits all snake_case keys when every optional field is set', () => {
+    const result = serializePolicy({
+      databaseRules: [
+        {
+          name: 'full',
+          dbService: 'pg-main',
+          dbFamily: 'postgres',
+          dbDialect: 'postgres',
+          schemas: ['public'],
+          objects: ['users'],
+          relations: ['public.users'],
+          functions: ['public.f'],
+          operations: ['read', 'write'],
+          subtypes: ['set_search_path'],
+          matchObjectResolution: 'catalog_resolved',
+          decision: 'audit',
+          message: 'logged',
+          timeout: '60s',
+          acknowledgeAuditOnDangerous: true,
+          denyModeInTx: 'rollback_then_continue',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const r = parsed.database_rules[0];
+    expect(r.db_service).toBe('pg-main');
+    expect(r.db_family).toBe('postgres');
+    expect(r.db_dialect).toBe('postgres');
+    expect(r.match_object_resolution).toBe('catalog_resolved');
+    expect(r.acknowledge_audit_on_dangerous).toBe(true);
+    expect(r.deny_mode_in_tx).toBe('rollback_then_continue');
+    expect(r.message).toBe('logged');
+    expect(r.timeout).toBe('60s');
+    expect(r.schemas).toEqual(['public']);
+    expect(r.objects).toEqual(['users']);
+    expect(r.relations).toEqual(['public.users']);
+    expect(r.functions).toEqual(['public.f']);
+    expect(r.subtypes).toEqual(['set_search_path']);
+  });
+
+  it('emits redirect as a nested object with relation', () => {
+    const result = serializePolicy({
+      databaseRules: [
+        {
+          name: 'redir',
+          operations: ['read'],
+          decision: 'redirect',
+          redirect: { relation: 'public.canonical' },
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules[0].redirect).toEqual({ relation: 'public.canonical' });
+  });
+
+  it('omits database_rules entirely when not set or empty', () => {
+    const resultA = serializePolicy({});
+    const resultB = serializePolicy({ databaseRules: [] });
+    expect(yaml.load(resultA) as any).not.toHaveProperty('database_rules');
+    expect(yaml.load(resultB) as any).not.toHaveProperty('database_rules');
+  });
+
+  it('omits empty optional arrays', () => {
+    const result = serializePolicy({
+      databaseRules: [
+        {
+          name: 'r',
+          operations: ['read'],
+          decision: 'allow',
+          schemas: [],
+          objects: [],
+          relations: [],
+          functions: [],
+          subtypes: [],
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const r = parsed.database_rules[0];
+    expect(r).not.toHaveProperty('schemas');
+    expect(r).not.toHaveProperty('objects');
+    expect(r).not.toHaveProperty('relations');
+    expect(r).not.toHaveProperty('functions');
+    expect(r).not.toHaveProperty('subtypes');
+  });
+
+  it('emits acknowledgeAuditOnDangerous: false (not omitted) to preserve explicit deny semantics', () => {
+    const result = serializePolicy({
+      databaseRules: [
+        {
+          name: 'r',
+          operations: ['read'],
+          decision: 'audit',
+          acknowledgeAuditOnDangerous: false,
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules[0].acknowledge_audit_on_dangerous).toBe(false);
+  });
+});

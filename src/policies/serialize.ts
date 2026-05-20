@@ -17,6 +17,7 @@ import type {
   VaultAuth,
   HttpService,
   DbServiceDef,
+  DatabaseRule,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -386,6 +387,31 @@ function serializeDbService(def: DbServiceDef): Record<string, unknown> {
   return out;
 }
 
+function serializeDatabaseRule(rule: DatabaseRule): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    name: rule.name,
+    operations: rule.operations,
+    decision: rule.decision,
+  };
+  if (rule.dbService) out.db_service = rule.dbService;
+  if (rule.dbFamily) out.db_family = rule.dbFamily;
+  if (rule.dbDialect) out.db_dialect = rule.dbDialect;
+  if (rule.schemas && rule.schemas.length > 0) out.schemas = rule.schemas;
+  if (rule.objects && rule.objects.length > 0) out.objects = rule.objects;
+  if (rule.relations && rule.relations.length > 0) out.relations = rule.relations;
+  if (rule.functions && rule.functions.length > 0) out.functions = rule.functions;
+  if (rule.subtypes && rule.subtypes.length > 0) out.subtypes = rule.subtypes;
+  if (rule.matchObjectResolution) out.match_object_resolution = rule.matchObjectResolution;
+  if (rule.message) out.message = rule.message;
+  if (rule.timeout) out.timeout = rule.timeout;
+  if (rule.redirect) out.redirect = { relation: rule.redirect.relation };
+  if (rule.acknowledgeAuditOnDangerous !== undefined) {
+    out.acknowledge_audit_on_dangerous = rule.acknowledgeAuditOnDangerous;
+  }
+  if (rule.denyModeInTx) out.deny_mode_in_tx = rule.denyModeInTx;
+  return out;
+}
+
 // ─── HTTP services ────────────────────────────────────────
 
 function serializeHttpServices(services: HttpService[]): Record<string, unknown>[] {
@@ -480,6 +506,10 @@ export function serializePolicy(policy: PolicyDefinition): string {
     doc.db_services = Object.fromEntries(
       Object.entries(policy.dbServices).map(([k, v]) => [k, serializeDbService(v)]),
     );
+  }
+
+  if (policy.databaseRules && policy.databaseRules.length > 0) {
+    doc.database_rules = policy.databaseRules.map(serializeDatabaseRule);
   }
 
   if (policy.resourceLimits) {
