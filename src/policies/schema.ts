@@ -403,6 +403,10 @@ export const PolicyDefinitionSchema = z
     auditSettings: AuditSettingsSchema.optional(),
     providers: z.record(z.string(), SecretProviderSchema).optional(),
     httpServices: z.array(HttpServiceSchema).optional(),
+    // DB access (v0.20+)
+    dbServices: z.record(z.string(), DbServiceDefSchema).optional(),
+    databaseRules: z.array(DatabaseRuleSchema).optional(),
+    databaseConnectionRules: z.array(DatabaseConnectionRuleSchema).optional(),
   })
   .strict();
 
@@ -429,6 +433,61 @@ export type HttpServiceInjectHeader = z.infer<typeof HttpServiceInjectHeaderSche
 export type HttpServiceInject = z.infer<typeof HttpServiceInjectSchema>;
 export type HttpServiceRule = z.infer<typeof HttpServiceRuleSchema>;
 export type HttpService = z.infer<typeof HttpServiceSchema>;
+export type DbServiceDef = z.infer<typeof DbServiceDefSchema>;
+export type DatabaseRule = z.infer<typeof DatabaseRuleSchema>;
+export type DatabaseConnectionRule = z.infer<typeof DatabaseConnectionRuleSchema>;
+
+/**
+ * Canonical DB operation groups (per agentsh spec §5). These are the underlying
+ * group names that aliases expand to at policy-load time inside agentsh.
+ *
+ * Exported as a hint union for editor autocomplete; the schema accepts any
+ * string so new agentsh operations don't break the binding.
+ */
+export type DbOperationGroup =
+  | 'read'
+  | 'write'
+  | 'modify'
+  | 'delete'
+  | 'bulk_load'
+  | 'bulk_export'
+  | 'schema_create'
+  | 'schema_alter'
+  | 'schema_destroy'
+  | 'privilege'
+  | 'transaction'
+  | 'session'
+  | 'maintenance'
+  | 'lock'
+  | 'notify'
+  | 'procedural'
+  | 'unsafe_io'
+  | 'unknown';
+
+/**
+ * Common DB operation aliases (per agentsh spec §5). Aliases expand to one or
+ * more groups at policy-load time inside agentsh. Hint-only — schema accepts
+ * any string.
+ */
+export type DbOperationAlias =
+  | 'READ'
+  | 'INSERT'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'REMOVE'
+  | 'CREATE'
+  | 'DROP'
+  | 'ALTER'
+  | 'TRUNCATE'
+  | 'EXPORT'
+  | 'LOAD'
+  | 'MUTATE'
+  | 'SCHEMA'
+  | 'MAINTENANCE'
+  | 'LOCK_TABLES'
+  | 'LISTEN_NOTIFY'
+  | 'DANGEROUS'
+  | '*';
 
 // ─── Validation ─────────────────────────────────────────────
 

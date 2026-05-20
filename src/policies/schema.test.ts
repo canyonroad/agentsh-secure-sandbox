@@ -1015,3 +1015,47 @@ describe('DatabaseConnectionRuleSchema', () => {
     }
   });
 });
+
+describe('PolicyDefinitionSchema — DB top-level keys', () => {
+  it('accepts dbServices as a record of DbServiceDef', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      dbServices: {
+        'pg-main': {
+          family: 'postgres',
+          dialect: 'postgres',
+          upstream: '127.0.0.1:5432',
+          tlsMode: 'terminate_reissue',
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts databaseRules array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts databaseConnectionRules array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', decision: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a policy with all three DB sections plus existing sections', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      file: [{ allow: '/workspace/**' }],
+      dbServices: { 'pg': { family: 'postgres', dialect: 'postgres', upstream: 'h:5432', tlsMode: 'terminate_reissue' } },
+      databaseRules: [{ name: 'r', operations: ['read'], decision: 'allow' }],
+      databaseConnectionRules: [{ name: 'c', decision: 'allow' }],
+    });
+    expect(result.success).toBe(true);
+  });
+});
