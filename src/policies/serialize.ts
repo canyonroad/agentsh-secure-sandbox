@@ -16,6 +16,7 @@ import type {
   SecretProvider,
   VaultAuth,
   HttpService,
+  DbServiceDef,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -364,6 +365,27 @@ function serializeProviders(providers: Record<string, SecretProvider>): Record<s
   return out;
 }
 
+// ─── DB services ──────────────────────────────────────────
+
+function serializeDbService(def: DbServiceDef): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    family: def.family,
+    dialect: def.dialect,
+    upstream: def.upstream,
+    tls_mode: def.tlsMode,
+  };
+  if (def.allowFunctionCallProtocol !== undefined) {
+    out.allow_function_call_protocol = def.allowFunctionCallProtocol;
+  }
+  if (def.allowGssEncryption !== undefined) {
+    out.allow_gss_encryption = def.allowGssEncryption;
+  }
+  if (def.trustedNetwork !== undefined) {
+    out.trusted_network = def.trustedNetwork;
+  }
+  return out;
+}
+
 // ─── HTTP services ────────────────────────────────────────
 
 function serializeHttpServices(services: HttpService[]): Record<string, unknown>[] {
@@ -452,6 +474,12 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.unixSocketRules && policy.unixSocketRules.length > 0) {
     doc.unix_socket_rules = serializeUnixSocketRules(policy.unixSocketRules);
+  }
+
+  if (policy.dbServices && Object.keys(policy.dbServices).length > 0) {
+    doc.db_services = Object.fromEntries(
+      Object.entries(policy.dbServices).map(([k, v]) => [k, serializeDbService(v)]),
+    );
   }
 
   if (policy.resourceLimits) {

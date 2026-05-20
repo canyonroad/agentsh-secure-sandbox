@@ -760,3 +760,69 @@ describe('systemPolicyYaml', () => {
     }
   });
 });
+
+describe('serializePolicy — dbServices', () => {
+  it('emits db_services with snake_case tls_mode', () => {
+    const result = serializePolicy({
+      dbServices: {
+        'pg-main': {
+          family: 'postgres',
+          dialect: 'postgres',
+          upstream: '127.0.0.1:5432',
+          tlsMode: 'terminate_reissue',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.db_services['pg-main']).toEqual({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tls_mode: 'terminate_reissue',
+    });
+  });
+
+  it('emits all optional flags in snake_case when set', () => {
+    const result = serializePolicy({
+      dbServices: {
+        'aurora': {
+          family: 'postgres',
+          dialect: 'aurora_postgres',
+          upstream: 'aurora.local:5432',
+          tlsMode: 'terminate_plaintext_upstream',
+          allowFunctionCallProtocol: true,
+          allowGssEncryption: false,
+          trustedNetwork: true,
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.db_services.aurora.allow_function_call_protocol).toBe(true);
+    expect(parsed.db_services.aurora.allow_gss_encryption).toBe(false);
+    expect(parsed.db_services.aurora.trusted_network).toBe(true);
+  });
+
+  it('omits optional flags when not set', () => {
+    const result = serializePolicy({
+      dbServices: {
+        'minimal': {
+          family: 'postgres',
+          dialect: 'postgres',
+          upstream: 'h:5432',
+          tlsMode: 'passthrough',
+        },
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.db_services.minimal).not.toHaveProperty('allow_function_call_protocol');
+    expect(parsed.db_services.minimal).not.toHaveProperty('allow_gss_encryption');
+    expect(parsed.db_services.minimal).not.toHaveProperty('trusted_network');
+  });
+
+  it('omits db_services entirely when not set or empty', () => {
+    const resultA = serializePolicy({});
+    const resultB = serializePolicy({ dbServices: {} });
+    expect(yaml.load(resultA) as any).not.toHaveProperty('db_services');
+    expect(yaml.load(resultB) as any).not.toHaveProperty('db_services');
+  });
+});
