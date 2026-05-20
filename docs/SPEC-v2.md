@@ -1032,6 +1032,78 @@ server startup), not at runtime inside the sandbox.
 
 ---
 
+## Database (v0.20+)
+
+Bindings for agentsh v0.20's database-access subsystem. Three keys under `PolicyDefinition` and one under `ServerConfigOpts`.
+
+### `PolicyDefinition.dbServices: Record<string, DbServiceDef>`
+
+| Field | Type | YAML key | Required | Notes |
+|---|---|---|---|---|
+| `family` | `string` | `family` | yes | e.g. `'postgres'`, `'mysql'`, `'mongo'` |
+| `dialect` | `string` | `dialect` | yes | e.g. `'postgres'`, `'aurora_postgres'`, `'redshift'` |
+| `upstream` | `string` | `upstream` | yes | `host:port` |
+| `tlsMode` | `'passthrough' \| 'terminate_reissue' \| 'terminate_plaintext_upstream'` | `tls_mode` | yes | |
+| `allowFunctionCallProtocol` | `boolean` | `allow_function_call_protocol` | no | |
+| `allowGssEncryption` | `boolean` | `allow_gss_encryption` | no | |
+| `trustedNetwork` | `boolean` | `trusted_network` | no | Required when `tlsMode: 'terminate_plaintext_upstream'` to a non-loopback/private host |
+
+Unknown fields preserved via `.passthrough()` for forward compatibility.
+
+### `PolicyDefinition.databaseRules: DatabaseRule[]`
+
+| Field | Type | YAML key | Required | Notes |
+|---|---|---|---|---|
+| `name` | `string` | `name` | yes | unique within the list |
+| `operations` | `string[]` | `operations` | yes | non-empty; open vocab (see `DbOperationGroup`/`DbOperationAlias`) |
+| `decision` | `'allow' \| 'deny' \| 'approve' \| 'audit' \| 'redirect'` | `decision` | yes | |
+| `dbService` | `string` | `db_service` | no | service name filter |
+| `dbFamily` | `string` | `db_family` | no | |
+| `dbDialect` | `string` | `db_dialect` | no | |
+| `schemas` | `string[]` | `schemas` | no | glob patterns |
+| `objects` | `string[]` | `objects` | no | syntactic object name globs |
+| `relations` | `string[]` | `relations` | no | canonical `schema.name` globs |
+| `functions` | `string[]` | `functions` | no | canonical function identity globs |
+| `subtypes` | `string[]` | `subtypes` | no | open vocab |
+| `matchObjectResolution` | `'qualified_syntactic' \| 'unqualified_syntactic' \| 'ambiguous_after_search_path' \| 'maybe_temp_shadowed' \| 'unresolved' \| 'catalog_resolved' \| '*'` | `match_object_resolution` | no | |
+| `message` | `string` | `message` | no | template (`{{.Operation}}` etc.) |
+| `timeout` | `string` | `timeout` | no | duration; agentsh caps at 600s |
+| `redirect` | `{ relation: string }` | `redirect` | required when `decision: 'redirect'` | |
+| `acknowledgeAuditOnDangerous` | `boolean` | `acknowledge_audit_on_dangerous` | no | |
+| `denyModeInTx` | `'terminate' \| 'rollback_then_continue'` | `deny_mode_in_tx` | no | meaningful with `decision: 'deny'` |
+
+### `PolicyDefinition.databaseConnectionRules: DatabaseConnectionRule[]`
+
+| Field | Type | YAML key | Required | Notes |
+|---|---|---|---|---|
+| `name` | `string` | `name` | yes | unique within the list |
+| `decision` | `'allow' \| 'deny' \| 'approve' \| 'audit'` | `decision` | yes | `'redirect'` is **not** valid here |
+| `dbService` | `string` | `db_service` | no | |
+| `matchKind` | `'connect' \| 'cancel' \| 'replication'` | `match_kind` | no | defaults to `'connect'` server-side |
+| `dbUser` | `string[]` | `db_user` | no | invisible under `tlsMode: 'passthrough'` |
+| `database` | `string` | `database` | no | invisible under `tlsMode: 'passthrough'` |
+| `applicationName` | `string` | `application_name` | no | invisible under `tlsMode: 'passthrough'` |
+| `clientIdentity` | `string` | `client_identity` | no | visible across all TLS modes |
+| `message` | `string` | `message` | no | |
+| `timeout` | `string` | `timeout` | no | |
+
+Validation: `matchKind: 'cancel'` + `decision: 'approve'` is rejected at parse time.
+
+### `ServerConfigOpts.dbPolicy`
+
+Emitted under `policies.db` in the generated server config. Omitted entirely when unset.
+
+| Field | Type | YAML key | Notes |
+|---|---|---|---|
+| `logStatements` | `'none' \| 'parameters_redacted' \| 'full'` | `log_statements` | agentsh default: `'parameters_redacted'` |
+| `approvalStatementPreview` | `'redacted' \| 'full'` | `approval_statement_preview` | |
+| `approvalStatementPreviewChars` | `number` | `approval_statement_preview_chars` | agentsh default: `200` |
+| `unavoidability` | `'off' \| 'required'` | `unavoidability` | agentsh default: `'off'` |
+| `escalateUnknownFunctions` | `boolean` | `escalate_unknown_functions` | agentsh default: `false` |
+| `safeFunctionAllowlist` | `string[]` | `safe_function_allowlist` | meaningful with `escalateUnknownFunctions: true` |
+
+---
+
 ## 10. Provisioning Sequence
 
 When `secureSandbox(adapter, { policy })` is called, the following happens.
