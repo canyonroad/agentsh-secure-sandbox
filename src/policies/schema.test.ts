@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PolicyDefinitionSchema, validatePolicy } from './schema.js';
+import { DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
 import { PolicyValidationError } from '../core/errors.js';
 
 describe('PolicyDefinitionSchema', () => {
@@ -815,5 +815,59 @@ describe('validatePolicy', () => {
 
   it('throws PolicyValidationError on invalid input', () => {
     expect(() => validatePolicy({ file: [{ invalid: true }] })).toThrow(PolicyValidationError);
+  });
+});
+
+describe('DbServiceDefSchema', () => {
+  it('accepts a minimal Postgres terminate_reissue service', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'terminate_reissue',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all optional flags', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'aurora_postgres',
+      upstream: 'db.local:5432',
+      tlsMode: 'terminate_plaintext_upstream',
+      allowFunctionCallProtocol: true,
+      allowGssEncryption: false,
+      trustedNetwork: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown tlsMode', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'bogus',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('requires family, dialect, upstream, tlsMode', () => {
+    const result = DbServiceDefSchema.safeParse({ family: 'postgres' });
+    expect(result.success).toBe(false);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'passthrough',
+      newFutureField: 'whatever',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe('whatever');
+    }
   });
 });

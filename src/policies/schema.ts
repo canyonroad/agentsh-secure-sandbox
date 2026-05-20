@@ -305,6 +305,26 @@ export const AuditSettingsSchema = z
   })
   .strict();
 
+// ─── DB access (v0.20+) ─────────────────────────────────────
+
+const DbTlsMode = z.enum([
+  'passthrough',
+  'terminate_reissue',
+  'terminate_plaintext_upstream',
+]);
+
+export const DbServiceDefSchema = z
+  .object({
+    family: z.string(),
+    dialect: z.string(),
+    upstream: z.string(),
+    tlsMode: DbTlsMode,
+    allowFunctionCallProtocol: z.boolean().optional(),
+    allowGssEncryption: z.boolean().optional(),
+    trustedNetwork: z.boolean().optional(),
+  })
+  .passthrough();
+
 // ─── PolicyDefinition ───────────────────────────────────────
 
 export const PolicyDefinitionSchema = z
