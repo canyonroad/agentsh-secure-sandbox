@@ -1059,3 +1059,129 @@ describe('PolicyDefinitionSchema — DB top-level keys', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('PolicyDefinitionSchema — DB validation rules', () => {
+  it('rejects database rule with empty operations array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('non-empty'))).toBe(true);
+    }
+  });
+
+  it('rejects decision: redirect without redirect.relation', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'redirect' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('redirect.relation')
+      )).toBe(true);
+    }
+  });
+
+  it('accepts decision: redirect when redirect.relation is set', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        {
+          name: 'r1',
+          operations: ['read'],
+          decision: 'redirect',
+          redirect: { relation: 'public.canonical' },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects connection rule with matchKind: cancel + decision: approve', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', matchKind: 'cancel', decision: 'approve' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('real-time')
+      )).toBe(true);
+    }
+  });
+
+  it('rejects duplicate names within databaseRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'allow' },
+        { name: 'r1', operations: ['write'], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('duplicate')
+      )).toBe(true);
+    }
+  });
+
+  it('rejects duplicate names within databaseConnectionRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', decision: 'allow' },
+        { name: 'c1', decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('duplicate')
+      )).toBe(true);
+    }
+  });
+
+  it('allows the same name across the two rule lists (no cross-list duplicate check)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'shared', operations: ['read'], decision: 'allow' }],
+      databaseConnectionRules: [{ name: 'shared', decision: 'allow' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('emits all violations in a single parse (not just the first)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+        { name: 'r2', operations: ['read'], decision: 'redirect' },
+      ],
+      databaseConnectionRules: [
+        { name: 'c1', matchKind: 'cancel', decision: 'approve' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map(i => i.message);
+      expect(messages.some(m => m.includes('non-empty'))).toBe(true);
+      expect(messages.some(m => m.includes('redirect.relation'))).toBe(true);
+      expect(messages.some(m => m.includes('real-time'))).toBe(true);
+    }
+  });
+
+  it('emits structured path on validation issues', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(i => i.message.includes('non-empty'));
+      expect(issue?.path).toEqual(['databaseRules', 0, 'operations']);
+    }
+  });
+});

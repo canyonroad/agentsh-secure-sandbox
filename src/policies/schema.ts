@@ -387,6 +387,86 @@ export const DatabaseConnectionRuleSchema = z
 
 // ─── PolicyDefinition ───────────────────────────────────────
 
+/**
+ * Local-property checks for DB rules that catch silent-bug configs.
+ * Emits one zod issue per finding so the user sees all problems in a
+ * single parse rather than fixing them one round-trip at a time.
+ *
+ * Intentionally deferred to agentsh's startup validator (it has the full
+ * service catalog and IP-range tables; duplicating that in TS would drift
+ * the moment agentsh updates):
+ *   - tls_mode: terminate_plaintext_upstream upstream loopback/private check
+ *   - catalog selector (relations/functions) + service-mode interaction
+ *   - "unsafe allow rule" check (decision: allow + operations: ['*'] no filter)
+ *   - operation alias expansion correctness
+ *   - approval timeout ≤ 600s
+ *   - object resolution tag runtime semantics
+ */
+function validateDbRules(
+  policy: {
+    databaseRules?: Array<{ name: string; operations?: string[]; decision: string; redirect?: { relation: string } }>;
+    databaseConnectionRules?: Array<{ name: string; matchKind?: string; decision: string }>;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  // 1. operations[] required and non-empty for every database rule
+  // 2. decision: redirect requires redirect.relation
+  // (combined in one pass over databaseRules for clarity)
+  (policy.databaseRules ?? []).forEach((r, i) => {
+    if (!r.operations || r.operations.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'operations'],
+        message: `databaseRules["${r.name}"]: operations must be a non-empty array`,
+      });
+    }
+    if (r.decision === 'redirect' && !r.redirect?.relation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'redirect'],
+        message: `databaseRules["${r.name}"]: decision "redirect" requires redirect.relation to be set`,
+      });
+    }
+  });
+
+  // 3. (handled at schema level — DbConnectionDecision enum doesn't include 'redirect')
+
+  // 4. matchKind 'cancel' + decision 'approve' is impossible (cancel is real-time)
+  (policy.databaseConnectionRules ?? []).forEach((r, i) => {
+    if (r.matchKind === 'cancel' && r.decision === 'approve') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseConnectionRules', i, 'decision'],
+        message: `databaseConnectionRules["${r.name}"]: matchKind "cancel" cannot use decision "approve" — cancel requests are real-time and cannot be held for approval`,
+      });
+    }
+  });
+
+  // 5. Duplicate names within each list
+  const seenDbRuleNames = new Set<string>();
+  (policy.databaseRules ?? []).forEach((r, i) => {
+    if (seenDbRuleNames.has(r.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'name'],
+        message: `databaseRules["${r.name}"]: duplicate rule name`,
+      });
+    }
+    seenDbRuleNames.add(r.name);
+  });
+  const seenConnRuleNames = new Set<string>();
+  (policy.databaseConnectionRules ?? []).forEach((r, i) => {
+    if (seenConnRuleNames.has(r.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseConnectionRules', i, 'name'],
+        message: `databaseConnectionRules["${r.name}"]: duplicate rule name`,
+      });
+    }
+    seenConnRuleNames.add(r.name);
+  });
+}
+
 export const PolicyDefinitionSchema = z
   .object({
     file: z.array(FileRuleSchema).optional(),
@@ -408,7 +488,10 @@ export const PolicyDefinitionSchema = z
     databaseRules: z.array(DatabaseRuleSchema).optional(),
     databaseConnectionRules: z.array(DatabaseConnectionRuleSchema).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((policy, ctx) => {
+    validateDbRules(policy, ctx);
+  });
 
 // ─── Inferred types ─────────────────────────────────────────
 
