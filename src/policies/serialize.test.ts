@@ -1001,3 +1001,12 @@ describe('serializePolicy — databaseConnectionRules', () => {
     expect(parsed.database_connection_rules[0]).not.toHaveProperty('db_user');
   });
 });
+
+describe('policies/index.ts — public surface for DB bindings', () => {
+  it('re-exports DB schemas as runtime values', async () => {
+    const mod = await import('./index.js');
+    expect(typeof mod.DbServiceDefSchema?.safeParse).toBe('function');
+    expect(typeof mod.DatabaseRuleSchema?.safeParse).toBe('function');
+    expect(typeof mod.DatabaseConnectionRuleSchema?.safeParse).toBe('function');
+  });
+});

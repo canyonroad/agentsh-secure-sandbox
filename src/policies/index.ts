@@ -1,4 +1,12 @@
-export { PolicyDefinitionSchema, HttpServiceSchema, SecretProviderSchema, validatePolicy } from './schema.js';
+export {
+  PolicyDefinitionSchema,
+  HttpServiceSchema,
+  SecretProviderSchema,
+  validatePolicy,
+  DbServiceDefSchema,
+  DatabaseRuleSchema,
+  DatabaseConnectionRuleSchema,
+} from './schema.js';
 export type {
   PolicyDefinition,
   FileRule,
@@ -14,6 +22,11 @@ export type {
   HttpServiceSecret,
   HttpServiceInject,
   HttpServiceInjectHeader,
+  DbServiceDef,
+  DatabaseRule,
+  DatabaseConnectionRule,
+  DbOperationGroup,
+  DbOperationAlias,
 } from './schema.js';
 export { agentDefault, devSafe, ciStrict, agentSandbox } from './presets.js';
 export { merge, mergePrepend } from './merge.js';
