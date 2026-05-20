@@ -18,6 +18,7 @@ import type {
   HttpService,
   DbServiceDef,
   DatabaseRule,
+  DatabaseConnectionRule,
 } from './schema.js';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -412,6 +413,22 @@ function serializeDatabaseRule(rule: DatabaseRule): Record<string, unknown> {
   return out;
 }
 
+function serializeDatabaseConnectionRule(rule: DatabaseConnectionRule): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    name: rule.name,
+    decision: rule.decision,
+  };
+  if (rule.dbService) out.db_service = rule.dbService;
+  if (rule.matchKind) out.match_kind = rule.matchKind;
+  if (rule.dbUser && rule.dbUser.length > 0) out.db_user = rule.dbUser;
+  if (rule.database) out.database = rule.database;
+  if (rule.applicationName) out.application_name = rule.applicationName;
+  if (rule.clientIdentity) out.client_identity = rule.clientIdentity;
+  if (rule.message) out.message = rule.message;
+  if (rule.timeout) out.timeout = rule.timeout;
+  return out;
+}
+
 // ─── HTTP services ────────────────────────────────────────
 
 function serializeHttpServices(services: HttpService[]): Record<string, unknown>[] {
@@ -510,6 +527,12 @@ export function serializePolicy(policy: PolicyDefinition): string {
 
   if (policy.databaseRules && policy.databaseRules.length > 0) {
     doc.database_rules = policy.databaseRules.map(serializeDatabaseRule);
+  }
+
+  if (policy.databaseConnectionRules && policy.databaseConnectionRules.length > 0) {
+    doc.database_connection_rules = policy.databaseConnectionRules.map(
+      serializeDatabaseConnectionRule,
+    );
   }
 
   if (policy.resourceLimits) {

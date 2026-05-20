@@ -941,3 +941,63 @@ describe('serializePolicy — databaseRules', () => {
     expect(parsed.database_rules[0].acknowledge_audit_on_dangerous).toBe(false);
   });
 });
+
+describe('serializePolicy — databaseConnectionRules', () => {
+  it('emits a minimal rule', () => {
+    const result = serializePolicy({
+      databaseConnectionRules: [
+        { name: 'c1', decision: 'allow' },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_connection_rules).toEqual([
+      { name: 'c1', decision: 'allow' },
+    ]);
+  });
+
+  it('emits all snake_case keys when every optional field is set', () => {
+    const result = serializePolicy({
+      databaseConnectionRules: [
+        {
+          name: 'full',
+          dbService: 'pg-main',
+          matchKind: 'replication',
+          dbUser: ['app', 'reader'],
+          database: 'production',
+          applicationName: 'web-*',
+          clientIdentity: 'spiffe://cluster/agent',
+          decision: 'approve',
+          message: 'reviewing',
+          timeout: '120s',
+        },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    const r = parsed.database_connection_rules[0];
+    expect(r.db_service).toBe('pg-main');
+    expect(r.match_kind).toBe('replication');
+    expect(r.db_user).toEqual(['app', 'reader']);
+    expect(r.database).toBe('production');
+    expect(r.application_name).toBe('web-*');
+    expect(r.client_identity).toBe('spiffe://cluster/agent');
+    expect(r.message).toBe('reviewing');
+    expect(r.timeout).toBe('120s');
+  });
+
+  it('omits database_connection_rules entirely when not set or empty', () => {
+    const resultA = serializePolicy({});
+    const resultB = serializePolicy({ databaseConnectionRules: [] });
+    expect(yaml.load(resultA) as any).not.toHaveProperty('database_connection_rules');
+    expect(yaml.load(resultB) as any).not.toHaveProperty('database_connection_rules');
+  });
+
+  it('omits empty dbUser array', () => {
+    const result = serializePolicy({
+      databaseConnectionRules: [
+        { name: 'c', decision: 'allow', dbUser: [] },
+      ],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_connection_rules[0]).not.toHaveProperty('db_user');
+  });
+});
