@@ -305,7 +305,188 @@ export const AuditSettingsSchema = z
   })
   .strict();
 
+// ─── DB access (v0.20+) ─────────────────────────────────────
+
+const DbTlsMode = z.enum([
+  'passthrough',
+  'terminate_reissue',
+  'terminate_plaintext_upstream',
+]);
+
+export const DbServiceDefSchema = z
+  .object({
+    family: z.string(),
+    dialect: z.string(),
+    upstream: z.string(),
+    tlsMode: DbTlsMode,
+    allowFunctionCallProtocol: z.boolean().optional(),
+    allowGssEncryption: z.boolean().optional(),
+    trustedNetwork: z.boolean().optional(),
+  })
+  .passthrough();
+
+const DbDecision = z.enum([
+  'allow',
+  'deny',
+  'approve',
+  'audit',
+  'redirect',
+]);
+
+const DbObjectResolution = z.enum([
+  'qualified_syntactic',
+  'unqualified_syntactic',
+  'ambiguous_after_search_path',
+  'maybe_temp_shadowed',
+  'unresolved',
+  'catalog_resolved',
+  '*',
+]);
+
+const DbDenyModeInTx = z.enum(['terminate', 'rollback_then_continue']);
+
+export const DatabaseRuleSchema = z
+  .object({
+    name: z.string(),
+    dbService: z.string().optional(),
+    dbFamily: z.string().optional(),
+    dbDialect: z.string().optional(),
+    schemas: z.array(z.string()).optional(),
+    objects: z.array(z.string()).optional(),
+    relations: z.array(z.string()).optional(),
+    functions: z.array(z.string()).optional(),
+    operations: z.array(z.string()),
+    subtypes: z.array(z.string()).optional(),
+    matchObjectResolution: DbObjectResolution.optional(),
+    requireWhere: z.boolean().optional(),
+    decision: DbDecision,
+    message: z.string().optional(),
+    timeout: z.string().optional(),
+    redirect: z.object({ relation: z.string() }).optional(),
+    acknowledgeAuditOnDangerous: z.boolean().optional(),
+    denyModeInTx: DbDenyModeInTx.optional(),
+  })
+  .passthrough();
+
+const DbConnectionDecision = z.enum(['allow', 'deny', 'approve', 'audit']);
+const DbMatchKind = z.enum(['connect', 'cancel', 'replication']);
+
+export const DatabaseConnectionRuleSchema = z
+  .object({
+    name: z.string(),
+    dbService: z.string().optional(),
+    matchKind: DbMatchKind.optional(),
+    dbUser: z.array(z.string()).optional(),
+    database: z.string().optional(),
+    applicationName: z.string().optional(),
+    clientIdentity: z.string().optional(),
+    decision: DbConnectionDecision,
+    message: z.string().optional(),
+    timeout: z.string().optional(),
+  })
+  .passthrough();
+
 // ─── PolicyDefinition ───────────────────────────────────────
+
+/**
+ * Local-property checks for DB rules that catch silent-bug configs.
+ * Emits one zod issue per finding so the user sees all problems in a
+ * single parse rather than fixing them one round-trip at a time.
+ *
+ * Intentionally deferred to agentsh's startup validator (it has the full
+ * service catalog and IP-range tables; duplicating that in TS would drift
+ * the moment agentsh updates):
+ *   - tls_mode: terminate_plaintext_upstream upstream loopback/private check
+ *   - catalog selector (relations/functions) + service-mode interaction
+ *   - "unsafe allow rule" check (decision: allow + operations: ['*'] no filter)
+ *   - operation alias expansion correctness
+ *   - approval timeout ≤ 600s
+ *   - object resolution tag runtime semantics
+ */
+function validateDbRules(
+  policy: {
+    databaseRules?: Array<{ name: string; operations?: string[]; decision: string; redirect?: { relation: string }; requireWhere?: boolean }>;
+    databaseConnectionRules?: Array<{ name: string; matchKind?: string; decision: string }>;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  // 1. operations[] required and non-empty for every database rule
+  // 2. decision: redirect requires redirect.relation
+  // (combined in one pass over databaseRules for clarity)
+  (policy.databaseRules ?? []).forEach((r, i) => {
+    if (!r.operations || r.operations.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'operations'],
+        message: `databaseRules["${r.name}"]: operations must be a non-empty array`,
+      });
+    }
+    if (r.decision === 'redirect' && !r.redirect?.relation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'redirect'],
+        message: `databaseRules["${r.name}"]: decision "redirect" requires redirect.relation to be set`,
+      });
+    }
+    // require_where: true is only valid when operations contain only modify/delete groups
+    if (r.requireWhere === true) {
+      const KNOWN_INCOMPATIBLE = new Set([
+        'read', 'write', 'bulk_load', 'bulk_export',
+        'schema_create', 'schema_alter', 'schema_destroy',
+        'privilege', 'transaction', 'session', 'maintenance',
+        'lock', 'notify', 'procedural', 'unsafe_io', 'unknown', '*',
+        'READ', 'INSERT', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE',
+        'EXPORT', 'LOAD', 'SCHEMA', 'MAINTENANCE',
+        'LOCK_TABLES', 'LISTEN_NOTIFY', 'DANGEROUS',
+      ]);
+      const hasIncompatible = (r.operations ?? []).some(op => KNOWN_INCOMPATIBLE.has(op));
+      if (hasIncompatible) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['databaseRules', i, 'requireWhere'],
+          message: `databaseRules["${r.name}"]: require_where is supported only for modify/delete operations`,
+        });
+      }
+    }
+  });
+
+  // 3. (handled at schema level — DbConnectionDecision enum doesn't include 'redirect')
+
+  // 4. matchKind 'cancel' + decision 'approve' is impossible (cancel is real-time)
+  (policy.databaseConnectionRules ?? []).forEach((r, i) => {
+    if (r.matchKind === 'cancel' && r.decision === 'approve') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseConnectionRules', i, 'decision'],
+        message: `databaseConnectionRules["${r.name}"]: matchKind "cancel" cannot use decision "approve" — cancel requests are real-time and cannot be held for approval`,
+      });
+    }
+  });
+
+  // 5. Duplicate names within each list
+  const seenDbRuleNames = new Set<string>();
+  (policy.databaseRules ?? []).forEach((r, i) => {
+    if (seenDbRuleNames.has(r.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseRules', i, 'name'],
+        message: `databaseRules["${r.name}"]: duplicate rule name`,
+      });
+    }
+    seenDbRuleNames.add(r.name);
+  });
+  const seenConnRuleNames = new Set<string>();
+  (policy.databaseConnectionRules ?? []).forEach((r, i) => {
+    if (seenConnRuleNames.has(r.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['databaseConnectionRules', i, 'name'],
+        message: `databaseConnectionRules["${r.name}"]: duplicate rule name`,
+      });
+    }
+    seenConnRuleNames.add(r.name);
+  });
+}
 
 export const PolicyDefinitionSchema = z
   .object({
@@ -323,8 +504,15 @@ export const PolicyDefinitionSchema = z
     auditSettings: AuditSettingsSchema.optional(),
     providers: z.record(z.string(), SecretProviderSchema).optional(),
     httpServices: z.array(HttpServiceSchema).optional(),
+    // DB access (v0.20+)
+    dbServices: z.record(z.string(), DbServiceDefSchema).optional(),
+    databaseRules: z.array(DatabaseRuleSchema).optional(),
+    databaseConnectionRules: z.array(DatabaseConnectionRuleSchema).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((policy, ctx) => {
+    validateDbRules(policy, ctx);
+  });
 
 // ─── Inferred types ─────────────────────────────────────────
 
@@ -349,6 +537,61 @@ export type HttpServiceInjectHeader = z.infer<typeof HttpServiceInjectHeaderSche
 export type HttpServiceInject = z.infer<typeof HttpServiceInjectSchema>;
 export type HttpServiceRule = z.infer<typeof HttpServiceRuleSchema>;
 export type HttpService = z.infer<typeof HttpServiceSchema>;
+export type DbServiceDef = z.infer<typeof DbServiceDefSchema>;
+export type DatabaseRule = z.infer<typeof DatabaseRuleSchema>;
+export type DatabaseConnectionRule = z.infer<typeof DatabaseConnectionRuleSchema>;
+
+/**
+ * Canonical DB operation groups (per agentsh spec §5). These are the underlying
+ * group names that aliases expand to at policy-load time inside agentsh.
+ *
+ * Exported as a hint union for editor autocomplete; the schema accepts any
+ * string so new agentsh operations don't break the binding.
+ */
+export type DbOperationGroup =
+  | 'read'
+  | 'write'
+  | 'modify'
+  | 'delete'
+  | 'bulk_load'
+  | 'bulk_export'
+  | 'schema_create'
+  | 'schema_alter'
+  | 'schema_destroy'
+  | 'privilege'
+  | 'transaction'
+  | 'session'
+  | 'maintenance'
+  | 'lock'
+  | 'notify'
+  | 'procedural'
+  | 'unsafe_io'
+  | 'unknown';
+
+/**
+ * Common DB operation aliases (per agentsh spec §5). Aliases expand to one or
+ * more groups at policy-load time inside agentsh. Hint-only — schema accepts
+ * any string.
+ */
+export type DbOperationAlias =
+  | 'READ'
+  | 'INSERT'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'REMOVE'
+  | 'CREATE'
+  | 'DROP'
+  | 'ALTER'
+  | 'TRUNCATE'
+  | 'EXPORT'
+  | 'LOAD'
+  | 'MUTATE'
+  | 'SCHEMA'
+  | 'MAINTENANCE'
+  | 'LOCK_TABLES'
+  | 'LISTEN_NOTIFY'
+  | 'DANGEROUS'
+  | '*';
 
 // ─── Validation ─────────────────────────────────────────────
 

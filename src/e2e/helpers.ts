@@ -23,3 +23,16 @@ export const ENV = {
   MODAL_TOKEN_SECRET: process.env.MODAL_TOKEN_SECRET,
   RUNLOOP_API_KEY: process.env.RUNLOOP_API_KEY,
 };
+
+// Some adapters (notably Daytona) surface a single combined stream, so
+// agentsh's shim diagnostics — e.g. "agentsh: interception setup failed,
+// running without interception: ..." emitted when wrap-init returns 503
+// on minimal-mode sessions — leak into stdout and break strict equality
+// assertions on user command output. Strip those lines for comparison.
+export function stripShimNoise(s: string): string {
+  return s
+    .split('\n')
+    .filter(line => !line.startsWith('agentsh:'))
+    .join('\n')
+    .trim();
+}

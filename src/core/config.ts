@@ -147,6 +147,29 @@ export interface ServerConfigOpts {
   dlp?: { mode?: string; patterns?: Record<string, boolean>; customPatterns?: Array<{ name: string; display: string; regex: string }> };
   policiesOverride?: { dir?: string; defaultPolicy?: string };
   policySigning?: { trustStore?: string; mode?: 'enforce' | 'warn' | 'off' };
+  /**
+   * Controls how the FUSE policy layer handles workspace-escape symlinks
+   * — links whose target resolves outside the workspace root (agentsh
+   * v0.20.1+). `'evaluate'` (agentsh default) lets such links be
+   * evaluated against the normal `file_rules`, so `python -m venv`
+   * works out of the box. `'deny'` restores the historical blanket
+   * workspace-escape posture. Emitted under `policies.symlink_escape`.
+   * Omitted when unset so agentsh's `'evaluate'` default applies.
+   */
+  symlinkEscape?: 'evaluate' | 'deny';
+  /**
+   * Server-side defaults for the DB-access subsystem (agentsh v0.20+).
+   * Emitted under `policies.db` in the generated server config. When
+   * unset, agentsh applies its own defaults via applyDefaults*.
+   */
+  dbPolicy?: {
+    logStatements?: 'none' | 'parameters_redacted' | 'full';
+    approvalStatementPreview?: 'redacted' | 'full';
+    approvalStatementPreviewChars?: number;
+    unavoidability?: 'off' | 'required';
+    escalateUnknownFunctions?: boolean;
+    safeFunctionAllowlist?: string[];
+  };
   approvals?: { enabled?: boolean; mode?: string; timeout?: string };
   metrics?: { enabled?: boolean; path?: string };
   health?: { path?: string; readinessPath?: string };
@@ -626,6 +649,35 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.policySigning.mode) signingObj.mode = opts.policySigning.mode;
     policies.signing = signingObj;
     config.policies = policies;
+  }
+
+  // Symlink-escape behavior for FUSE policy layer (v0.20.1+)
+  if (opts.symlinkEscape) {
+    const policies = (config.policies as Record<string, unknown>) ?? {};
+    policies.symlink_escape = opts.symlinkEscape;
+    config.policies = policies;
+  }
+
+  // DB policy server-side defaults (v0.20+)
+  if (opts.dbPolicy) {
+    const policies = (config.policies as Record<string, unknown>) ?? {};
+    const db: Record<string, unknown> = {};
+    if (opts.dbPolicy.logStatements) db.log_statements = opts.dbPolicy.logStatements;
+    if (opts.dbPolicy.approvalStatementPreview) db.approval_statement_preview = opts.dbPolicy.approvalStatementPreview;
+    if (opts.dbPolicy.approvalStatementPreviewChars !== undefined) {
+      db.approval_statement_preview_chars = opts.dbPolicy.approvalStatementPreviewChars;
+    }
+    if (opts.dbPolicy.unavoidability) db.unavoidability = opts.dbPolicy.unavoidability;
+    if (opts.dbPolicy.escalateUnknownFunctions !== undefined) {
+      db.escalate_unknown_functions = opts.dbPolicy.escalateUnknownFunctions;
+    }
+    if (opts.dbPolicy.safeFunctionAllowlist && opts.dbPolicy.safeFunctionAllowlist.length > 0) {
+      db.safe_function_allowlist = opts.dbPolicy.safeFunctionAllowlist;
+    }
+    if (Object.keys(db).length > 0) {
+      policies.db = db;
+      config.policies = policies;
+    }
   }
 
   // Approvals

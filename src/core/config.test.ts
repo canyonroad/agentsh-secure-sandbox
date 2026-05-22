@@ -1167,3 +1167,108 @@ describe('defaultThreatFeeds', () => {
     expect(defaultThreatFeeds.allowlist).toContain('github.com');
   });
 });
+
+describe('generateServerConfig — dbPolicy', () => {
+  it('omits policies.db when dbPolicy is not set (agentsh applies its own defaults)', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies).not.toHaveProperty('db');
+  });
+
+  it('emits only the fields the user set', () => {
+    const result = generateServerConfig({
+      dbPolicy: { logStatements: 'full' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db).toEqual({ log_statements: 'full' });
+  });
+
+  it('emits all six fields when fully populated', () => {
+    const result = generateServerConfig({
+      dbPolicy: {
+        logStatements: 'parameters_redacted',
+        approvalStatementPreview: 'full',
+        approvalStatementPreviewChars: 500,
+        unavoidability: 'required',
+        escalateUnknownFunctions: true,
+        safeFunctionAllowlist: ['lower', 'upper', 'now'],
+      },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db).toEqual({
+      log_statements: 'parameters_redacted',
+      approval_statement_preview: 'full',
+      approval_statement_preview_chars: 500,
+      unavoidability: 'required',
+      escalate_unknown_functions: true,
+      safe_function_allowlist: ['lower', 'upper', 'now'],
+    });
+  });
+
+  it('omits safe_function_allowlist when empty', () => {
+    const result = generateServerConfig({
+      dbPolicy: { escalateUnknownFunctions: true, safeFunctionAllowlist: [] },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db.escalate_unknown_functions).toBe(true);
+    expect(parsed.policies.db).not.toHaveProperty('safe_function_allowlist');
+  });
+
+  it('coexists with policySigning under the same policies block', () => {
+    const result = generateServerConfig({
+      dbPolicy: { logStatements: 'none' },
+      policySigning: { mode: 'enforce', trustStore: '/etc/agentsh/keys' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db).toEqual({ log_statements: 'none' });
+    expect(parsed.policies.signing).toEqual({ mode: 'enforce', trust_store: '/etc/agentsh/keys' });
+  });
+
+  it('preserves false for escalateUnknownFunctions (not omitted)', () => {
+    const result = generateServerConfig({
+      dbPolicy: { escalateUnknownFunctions: false },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db).toEqual({ escalate_unknown_functions: false });
+  });
+
+  it('preserves 0 for approvalStatementPreviewChars (not omitted)', () => {
+    const result = generateServerConfig({
+      dbPolicy: { approvalStatementPreviewChars: 0 },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.db).toEqual({ approval_statement_preview_chars: 0 });
+  });
+});
+
+describe('generateServerConfig — symlinkEscape', () => {
+  it('omits policies.symlink_escape when unset (agentsh defaults to "evaluate")', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies).not.toHaveProperty('symlink_escape');
+  });
+
+  it('emits symlink_escape: "evaluate" when set', () => {
+    const result = generateServerConfig({ symlinkEscape: 'evaluate' });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('evaluate');
+  });
+
+  it('emits symlink_escape: "deny" when set', () => {
+    const result = generateServerConfig({ symlinkEscape: 'deny' });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('deny');
+  });
+
+  it('coexists with policySigning, dbPolicy under the same policies block', () => {
+    const result = generateServerConfig({
+      symlinkEscape: 'deny',
+      policySigning: { mode: 'enforce', trustStore: '/etc/agentsh/keys' },
+      dbPolicy: { logStatements: 'none' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('deny');
+    expect(parsed.policies.signing).toEqual({ mode: 'enforce', trust_store: '/etc/agentsh/keys' });
+    expect(parsed.policies.db).toEqual({ log_statements: 'none' });
+  });
+});

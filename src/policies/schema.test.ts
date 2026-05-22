@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PolicyDefinitionSchema, validatePolicy } from './schema.js';
+import { DatabaseConnectionRuleSchema, DatabaseRuleSchema, DbServiceDefSchema, PolicyDefinitionSchema, validatePolicy } from './schema.js';
 import { PolicyValidationError } from '../core/errors.js';
 
 describe('PolicyDefinitionSchema', () => {
@@ -815,5 +815,408 @@ describe('validatePolicy', () => {
 
   it('throws PolicyValidationError on invalid input', () => {
     expect(() => validatePolicy({ file: [{ invalid: true }] })).toThrow(PolicyValidationError);
+  });
+});
+
+describe('DbServiceDefSchema', () => {
+  it('accepts a minimal Postgres terminate_reissue service', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'terminate_reissue',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all optional flags', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'aurora_postgres',
+      upstream: 'db.local:5432',
+      tlsMode: 'terminate_plaintext_upstream',
+      allowFunctionCallProtocol: true,
+      allowGssEncryption: false,
+      trustedNetwork: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown tlsMode', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'bogus',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('requires family, dialect, upstream, tlsMode', () => {
+    const result = DbServiceDefSchema.safeParse({ family: 'postgres' });
+    expect(result.success).toBe(false);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DbServiceDefSchema.safeParse({
+      family: 'postgres',
+      dialect: 'postgres',
+      upstream: '127.0.0.1:5432',
+      tlsMode: 'passthrough',
+      newFutureField: 'whatever',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe('whatever');
+    }
+  });
+});
+
+describe('DatabaseRuleSchema', () => {
+  const minimal = {
+    name: 'allow-reads',
+    operations: ['read'],
+    decision: 'allow' as const,
+  };
+
+  it('accepts a minimal rule', () => {
+    const result = DatabaseRuleSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts every documented enum value for decision', () => {
+    for (const decision of ['allow', 'deny', 'approve', 'audit', 'redirect'] as const) {
+      const result = DatabaseRuleSchema.safeParse({
+        name: `r-${decision}`,
+        operations: ['read'],
+        decision,
+        ...(decision === 'redirect' ? { redirect: { relation: 'public.canonical' } } : {}),
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects unknown decision values', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      decision: 'maybe',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts every documented matchObjectResolution value', () => {
+    for (const tag of [
+      'qualified_syntactic',
+      'unqualified_syntactic',
+      'ambiguous_after_search_path',
+      'maybe_temp_shadowed',
+      'unresolved',
+      'catalog_resolved',
+      '*',
+    ] as const) {
+      const result = DatabaseRuleSchema.safeParse({
+        ...minimal,
+        matchObjectResolution: tag,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts denyModeInTx enum values', () => {
+    for (const m of ['terminate', 'rollback_then_continue'] as const) {
+      const result = DatabaseRuleSchema.safeParse({ ...minimal, denyModeInTx: m });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts open-vocab operations (not constrained to a fixed enum)', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      operations: ['my_future_operation_name'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts open-vocab subtypes', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      subtypes: ['my_subtype'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DatabaseRuleSchema.safeParse({
+      ...minimal,
+      newFutureField: 42,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe(42);
+    }
+  });
+
+  it('accepts requireWhere with modify/delete operations', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['modify', 'delete'], decision: 'deny', requireWhere: true,
+    }).success).toBe(true);
+  });
+
+  it('accepts requireWhere with the UPDATE alias', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['UPDATE'], decision: 'deny', requireWhere: true,
+    }).success).toBe(true);
+  });
+
+  it('accepts requireWhere: false unconditionally', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['read'], decision: 'allow', requireWhere: false,
+    }).success).toBe(true);
+  });
+});
+
+describe('DatabaseConnectionRuleSchema', () => {
+  const minimal = {
+    name: 'allow-connects',
+    decision: 'allow' as const,
+  };
+
+  it('accepts a minimal rule', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts all matchKind values', () => {
+    for (const k of ['connect', 'cancel', 'replication'] as const) {
+      const result = DatabaseConnectionRuleSchema.safeParse({ ...minimal, matchKind: k });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts decision enum without redirect', () => {
+    for (const d of ['allow', 'deny', 'approve', 'audit'] as const) {
+      const result = DatabaseConnectionRuleSchema.safeParse({ ...minimal, decision: d });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects decision: redirect (not supported on connection rules)', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      decision: 'redirect',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all visibility-restricted optional fields', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      dbService: 'pg-main',
+      dbUser: ['app', 'reader'],
+      database: 'production',
+      applicationName: 'web-*',
+      clientIdentity: 'spiffe://cluster/agent',
+      message: 'denied',
+      timeout: '60s',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('preserves unknown forward-compat fields via passthrough', () => {
+    const result = DatabaseConnectionRuleSchema.safeParse({
+      ...minimal,
+      newFutureField: 'whatever',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as any).newFutureField).toBe('whatever');
+    }
+  });
+});
+
+describe('PolicyDefinitionSchema — DB top-level keys', () => {
+  it('accepts dbServices as a record of DbServiceDef', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      dbServices: {
+        'pg-main': {
+          family: 'postgres',
+          dialect: 'postgres',
+          upstream: '127.0.0.1:5432',
+          tlsMode: 'terminate_reissue',
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts databaseRules array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts databaseConnectionRules array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', decision: 'allow' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a policy with all three DB sections plus existing sections', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      file: [{ allow: '/workspace/**' }],
+      dbServices: { 'pg': { family: 'postgres', dialect: 'postgres', upstream: 'h:5432', tlsMode: 'terminate_reissue' } },
+      databaseRules: [{ name: 'r', operations: ['read'], decision: 'allow' }],
+      databaseConnectionRules: [{ name: 'c', decision: 'allow' }],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('PolicyDefinitionSchema — DB validation rules', () => {
+  it('rejects database rule with empty operations array', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('non-empty'))).toBe(true);
+    }
+  });
+
+  it('rejects decision: redirect without redirect.relation', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'redirect' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('redirect.relation')
+      )).toBe(true);
+    }
+  });
+
+  it('accepts decision: redirect when redirect.relation is set', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        {
+          name: 'r1',
+          operations: ['read'],
+          decision: 'redirect',
+          redirect: { relation: 'public.canonical' },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects connection rule with matchKind: cancel + decision: approve', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', matchKind: 'cancel', decision: 'approve' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('real-time')
+      )).toBe(true);
+    }
+  });
+
+  it('rejects duplicate names within databaseRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: ['read'], decision: 'allow' },
+        { name: 'r1', operations: ['write'], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('duplicate')
+      )).toBe(true);
+    }
+  });
+
+  it('rejects duplicate names within databaseConnectionRules', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseConnectionRules: [
+        { name: 'c1', decision: 'allow' },
+        { name: 'c1', decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i =>
+        i.message.includes('duplicate')
+      )).toBe(true);
+    }
+  });
+
+  it('allows the same name across the two rule lists (no cross-list duplicate check)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'shared', operations: ['read'], decision: 'allow' }],
+      databaseConnectionRules: [{ name: 'shared', decision: 'allow' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('emits all violations in a single parse (not just the first)', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+        { name: 'r2', operations: ['read'], decision: 'redirect' },
+      ],
+      databaseConnectionRules: [
+        { name: 'c1', matchKind: 'cancel', decision: 'approve' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map(i => i.message);
+      expect(messages.some(m => m.includes('non-empty'))).toBe(true);
+      expect(messages.some(m => m.includes('redirect.relation'))).toBe(true);
+      expect(messages.some(m => m.includes('real-time'))).toBe(true);
+    }
+  });
+
+  it('emits structured path on validation issues', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [
+        { name: 'r1', operations: [], decision: 'deny' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(i => i.message.includes('non-empty'));
+      expect(issue?.path).toEqual(['databaseRules', 0, 'operations']);
+    }
+  });
+
+  it('rejects requireWhere: true when operations include a non-modify/delete group', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'r1', operations: ['read'], decision: 'deny', requireWhere: true }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('require_where'))).toBe(true);
+    }
+  });
+
+  it('accepts requireWhere: true when operations are only modify/delete', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'r1', operations: ['modify', 'delete'], decision: 'deny', requireWhere: true }],
+    });
+    expect(result.success).toBe(true);
   });
 });

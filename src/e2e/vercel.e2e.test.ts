@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createRequire } from 'node:module';
 import { ENV } from './helpers.js';
 import { secureSandbox } from '../api.js';
-import { vercel } from '../adapters/vercel.js';
+import { vercel, applyVercelSdkWorkaround } from '../adapters/vercel.js';
 import type { SecuredSandbox } from '../core/types.js';
 
 const require = createRequire(import.meta.url);
@@ -24,6 +24,11 @@ describe.skipIf(!canRun)('Vercel E2E', () => {
       projectId: ENV.VERCEL_PROJECT_ID!,
       teamId: ENV.VERCEL_TEAM_ID!,
     });
+
+    // Required on Node ≥26 because of an upstream @vercel/sandbox SDK bug —
+    // see applyVercelSdkWorkaround() for details. Must run before any
+    // runCommand call, including the pre-install step below.
+    await applyVercelSdkWorkaround(rawSandbox);
 
     // Install system dependencies required by agentsh
     await rawSandbox.runCommand({

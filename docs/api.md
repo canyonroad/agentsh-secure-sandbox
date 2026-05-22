@@ -323,6 +323,175 @@ Each rule controls access to specific paths:
 | `message` | `string` | No | Message shown when rule triggers |
 | `timeout` | `string` | No | Request timeout (e.g. `'30s'`) |
 
+## Database access (v0.20+)
+
+Agentsh v0.20+ introduces first-class policy for database connections and statements. Three new top-level keys in your `policy` and one new optional block in `serverConfig`:
+
+- `policy.dbServices` — declare each database connection (family, dialect, upstream, TLS mode).
+- `policy.databaseRules` — statement-level rules (which operations, against which schemas/objects, what decision).
+- `policy.databaseConnectionRules` — connection-level rules (which users, applications, match kinds).
+- `serverConfig.dbPolicy` — runtime defaults for statement logging, approval previews, and unavoidability.
+
+For the full list of operation groups, aliases, subtypes, and resolution tags, see [agentsh's DB access spec](https://github.com/canyonroad/agentsh/blob/main/docs/db-access-spec.md). The TypeScript schema accepts any string for operations/subtypes so new agentsh additions don't require a library bump.
+
+### Services (`policy.dbServices`)
+
+A map of service name → connection definition.
+
+```ts
+import { secureSandbox } from '@agentsh/secure-sandbox';
+
+const sandbox = await secureSandbox(adapter, {
+  policy: {
+    dbServices: {
+      'pg-main': {
+        family: 'postgres',
+        dialect: 'postgres',
+        upstream: '127.0.0.1:5432',
+        tlsMode: 'terminate_reissue',     // required
+        // optional flags:
+        allowFunctionCallProtocol: false,
+        allowGssEncryption: false,
+        trustedNetwork: false,
+      },
+    },
+  },
+});
+```
+
+`tlsMode` is required. Valid values:
+
+- `passthrough` — agentsh forwards the TLS stream without inspecting statements. Statement-level policy is unavailable; connection-level fields like `dbUser`/`database` are invisible.
+- `terminate_reissue` — agentsh terminates client TLS, reissues TLS to upstream. Full visibility, statement policy supported.
+- `terminate_plaintext_upstream` — agentsh terminates client TLS, talks plaintext to upstream. Requires loopback/private upstream OR `trustedNetwork: true`.
+
+### Statement rules (`policy.databaseRules`)
+
+A list of rules evaluated against each SQL statement.
+
+```ts
+policy: {
+  dbServices: { 'pg-main': { /* ... */ } },
+  databaseRules: [
+    {
+      name: 'allow-app-reads',
+      dbService: 'pg-main',
+      schemas: ['public'],
+      operations: ['read'],       // required, non-empty
+      decision: 'allow',          // required
+    },
+    {
+      name: 'deny-dangerous',
+      operations: ['DANGEROUS'],  // alias expands to schema_destroy + privilege + ...
+      decision: 'deny',
+    },
+    {
+      name: 'redirect-to-canonical',
+      relations: ['public.users_old'],
+      operations: ['read'],
+      decision: 'redirect',
+      redirect: { relation: 'public.users' },
+    },
+    {
+      name: 'audit-bulk-export',
+      operations: ['bulk_export'],
+      decision: 'audit',
+      acknowledgeAuditOnDangerous: true,
+    },
+  ],
+},
+```
+
+Key fields:
+
+- `operations` — required, non-empty. Open vocab: accepts canonical groups (`'read'`, `'write'`, `'schema_destroy'`, ...), aliases (`'READ'`, `'INSERT'`, `'DANGEROUS'`, `'*'`), or any string agentsh adds in the future. Editor autocomplete is provided via the `DbOperationGroup` and `DbOperationAlias` exported types.
+- `decision` — required. One of `'allow' | 'deny' | 'approve' | 'audit' | 'redirect'`.
+- `redirect.relation` — required when `decision: 'redirect'`. Library validates this at parse time.
+- `matchObjectResolution` — optional. Controls which resolution tags this rule matches (`'qualified_syntactic'`, `'catalog_resolved'`, `'*'`, etc.).
+- `denyModeInTx` — `'terminate'` (kill the connection) or `'rollback_then_continue'` (rollback the transaction, leave connection open). Only meaningful with `decision: 'deny'`.
+- `acknowledgeAuditOnDangerous` — silence the warning when auditing a high-risk operation group instead of denying it.
+- `requireWhere` — when `true`, the rule applies only to mutations that have a `WHERE` clause. Useful for catching unguarded `UPDATE`/`DELETE` statements. Only valid when `operations` contains only `modify` and/or `delete` groups (and their aliases).
+
+### Connection rules (`policy.databaseConnectionRules`)
+
+A list of rules evaluated at connection time.
+
+```ts
+policy: {
+  databaseConnectionRules: [
+    {
+      name: 'allow-app-user',
+      dbService: 'pg-main',
+      matchKind: 'connect',           // 'connect' | 'cancel' | 'replication'
+      dbUser: ['app'],
+      database: 'production',
+      decision: 'allow',
+    },
+    {
+      name: 'deny-replication',
+      matchKind: 'replication',
+      decision: 'deny',
+    },
+  ],
+},
+```
+
+Notes:
+
+- `decision: 'redirect'` is **not** supported on connection rules (enforced by the type).
+- `matchKind: 'cancel'` + `decision: 'approve'` is invalid (cancel is real-time and cannot be held for approval). The library rejects this combination at parse time.
+- `dbUser`, `database`, `applicationName` are invisible when the matching service uses `tlsMode: 'passthrough'`; agentsh will reject rules that reference them in that case at server start.
+
+### Runtime defaults (`serverConfig.dbPolicy`)
+
+Tunes how agentsh handles DB events at runtime. All fields optional; agentsh applies its own defaults for anything you leave out.
+
+```ts
+const sandbox = await secureSandbox(adapter, {
+  serverConfig: {
+    dbPolicy: {
+      logStatements: 'parameters_redacted',  // 'none' | 'parameters_redacted' | 'full'
+      approvalStatementPreview: 'redacted',  // 'redacted' | 'full'
+      approvalStatementPreviewChars: 200,
+      unavoidability: 'off',                 // 'off' | 'required'
+      escalateUnknownFunctions: false,
+      safeFunctionAllowlist: ['lower', 'upper', 'now'],
+    },
+  },
+});
+```
+
+## Workspace-escape symlink behavior (v0.20.1+)
+
+By default, when a workspace symlink's target resolves outside the workspace root, agentsh evaluates the resolved path against the normal `file_rules` — this is required for ordinary `python -m venv` usage (the link `venv/bin/python -> /usr/bin/python3`). Set `symlinkEscape: 'deny'` on `serverConfig` to restore the historical blanket workspace-escape deny instead.
+
+```ts
+const sandbox = await secureSandbox(adapter, {
+  serverConfig: {
+    symlinkEscape: 'deny',   // 'evaluate' (default) | 'deny'
+  },
+});
+```
+
+### What the library validates vs. what agentsh validates
+
+The TS schema catches local-property bugs at parse time:
+
+- `databaseRules[].operations` must be non-empty.
+- `databaseRules[].decision: 'redirect'` requires `redirect.relation`.
+- `databaseConnectionRules[].decision: 'redirect'` is rejected (not a valid value).
+- `databaseConnectionRules[].matchKind: 'cancel'` + `decision: 'approve'` is rejected.
+- Duplicate rule names within either list are rejected.
+- `databaseRules[].requireWhere: true` rejected when `operations` includes any non-modify/delete group (e.g., `'read'`, `'schema_destroy'`).
+
+The TS schema does **not** validate cross-rule or runtime-dependent constraints — those are deferred to agentsh's startup validator and surface as `ProvisioningError` when `secureSandbox()` is called. These include:
+
+- `tlsMode: 'terminate_plaintext_upstream'` requires loopback/private upstream OR `trustedNetwork: true`.
+- Catalog selectors (`relations`/`functions` with `matchObjectResolution: 'catalog_resolved'`) require a terminate-mode Postgres service.
+- The "unsafe allow rule" check (`decision: 'allow'` + `operations: ['*']` without a service/family filter).
+- Operation alias expansion correctness.
+- Approval `timeout` ≤ 600s.
+
 ## Audit Integrity
 
 HMAC-chain audit log integrity (v0.18.0+). Each audit record includes a cryptographic hash linking it to the previous record, creating a tamper-evident chain. If any record is modified or deleted, the chain breaks.

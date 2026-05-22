@@ -26,7 +26,19 @@ const WRAP_NOISE_PREFIXES = [
   'agentsh: agent ',
   'signal filter: load seccomp filter:',
   'yama: not active, skipping PR_SET_PTRACER',
+  // agentsh-unixwrap writes this slog.Info line to the wrapped command's
+  // stderr on every successful filter install — see agentsh
+  // internal/netmonitor/unix/seccomp_linux.go:500. Until upstream routes
+  // it off the user-visible stderr, strip it here so it doesn't leak
+  // into writeFile/exec error messages.
+  'seccomp: filter loaded',
 ];
+
+// Agentsh ≥0.20 uses Go's slog text handler which prefixes lines with a
+// level token ("INFO ", "WARN ", etc.) before the actual content. Strip
+// that prefix before testing against WRAP_NOISE_PREFIXES so e.g.
+// "INFO agentsh: agent foo" still matches the "agentsh: agent " entry.
+const SLOG_LEVEL = /^(?:debug|info|warn|warning|error)\s+/i;
 
 /** Build env object with TRACEPARENT if an OTEL span is active. */
 async function traceEnv(): Promise<Record<string, string> | undefined> {
@@ -50,7 +62,10 @@ function parseExecJson(raw: ExecResult): ExecResult {
     return {
       exitCode: result.exit_code ?? raw.exitCode,
       stdout: result.stdout ?? '',
-      stderr: result.stderr ?? result.error?.message ?? '',
+      // Sanitize the inner stderr — the wrapped command inherits
+      // agentsh-unixwrap's stderr fd, so unixwrap's INFO/diagnostic
+      // lines end up mixed into the user-visible stream here.
+      stderr: sanitizeWrapStream(result.stderr ?? result.error?.message ?? ''),
     };
   }
 
@@ -80,8 +95,15 @@ function sanitizeWrapStream(text: string): string {
 
   return normalized
     .split('\n')
-    .filter((line) => line && !WRAP_NOISE_PREFIXES.some((prefix) => line.startsWith(prefix))
-      && !/^\d{4}\/\d{2}\/\d{2} .*ERROR wrap: failed to receive notify fd from wrapper/.test(line))
+    .filter((line) => {
+      if (!line) return false;
+      const stripped = line.replace(SLOG_LEVEL, '');
+      // Lines that are just a slog level prefix (split off by the
+      // replaceAll above) collapse to empty after stripping — drop them.
+      if (!stripped) return false;
+      return !WRAP_NOISE_PREFIXES.some((prefix) => stripped.startsWith(prefix))
+        && !/^\d{4}\/\d{2}\/\d{2} .*ERROR wrap: failed to receive notify fd from wrapper/.test(line);
+    })
     .join('\n');
 }
 

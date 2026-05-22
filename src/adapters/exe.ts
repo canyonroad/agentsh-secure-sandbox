@@ -33,11 +33,17 @@ const SSH_OPTS = [
 /** Strip agentsh debug noise that leaks through SSH stderr. */
 const NOISE_PREFIXES = ['landlock:', 'ptrace:', 'agentsh:', 'seccomp:', '[agentsh]'];
 
+// Agentsh ≥0.20 uses Go's slog text handler which prefixes lines with a
+// level token ("INFO ", "WARN ", etc.) before the actual content. Strip
+// that prefix once before testing against NOISE_PREFIXES so e.g.
+// "INFO seccomp: filter loaded …" still matches the "seccomp:" entry.
+const SLOG_LEVEL = /^(?:debug|info|warn|warning|error)\s+/i;
+
 function filterNoise(text: string): string {
   return text
     .split('\n')
     .filter(line => {
-      const trimmed = line.trimStart().toLowerCase();
+      const trimmed = line.trimStart().replace(SLOG_LEVEL, '').toLowerCase();
       return !NOISE_PREFIXES.some(p => trimmed.startsWith(p.toLowerCase()));
     })
     .join('\n');
