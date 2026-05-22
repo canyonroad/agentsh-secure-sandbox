@@ -1066,6 +1066,7 @@ Unknown fields preserved via `.passthrough()` for forward compatibility.
 | `functions` | `string[]` | `functions` | no | canonical function identity globs |
 | `subtypes` | `string[]` | `subtypes` | no | open vocab |
 | `matchObjectResolution` | `'qualified_syntactic' \| 'unqualified_syntactic' \| 'ambiguous_after_search_path' \| 'maybe_temp_shadowed' \| 'unresolved' \| 'catalog_resolved' \| '*'` | `match_object_resolution` | no | |
+| `requireWhere` | `boolean` | `require_where` | no | when `true`, rule only matches mutations carrying a `WHERE` clause; valid only for `modify`/`delete` operations |
 | `message` | `string` | `message` | no | template (`{{.Operation}}` etc.) |
 | `timeout` | `string` | `timeout` | no | duration; agentsh caps at 600s |
 | `redirect` | `{ relation: string }` | `redirect` | required when `decision: 'redirect'` | |

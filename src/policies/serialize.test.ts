@@ -940,6 +940,30 @@ describe('serializePolicy — databaseRules', () => {
     const parsed = yaml.load(result) as any;
     expect(parsed.database_rules[0].acknowledge_audit_on_dangerous).toBe(false);
   });
+
+  it('emits require_where in snake_case when set to true', () => {
+    const result = serializePolicy({
+      databaseRules: [{ name: 'r', operations: ['modify'], decision: 'deny', requireWhere: true }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules[0].require_where).toBe(true);
+  });
+
+  it('omits require_where when undefined', () => {
+    const result = serializePolicy({
+      databaseRules: [{ name: 'r', operations: ['read'], decision: 'allow' }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules[0]).not.toHaveProperty('require_where');
+  });
+
+  it('emits require_where: false (preserves explicit value)', () => {
+    const result = serializePolicy({
+      databaseRules: [{ name: 'r', operations: ['read'], decision: 'allow', requireWhere: false }],
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.database_rules[0].require_where).toBe(false);
+  });
 });
 
 describe('serializePolicy — databaseConnectionRules', () => {

@@ -410,6 +410,7 @@ Key fields:
 - `matchObjectResolution` — optional. Controls which resolution tags this rule matches (`'qualified_syntactic'`, `'catalog_resolved'`, `'*'`, etc.).
 - `denyModeInTx` — `'terminate'` (kill the connection) or `'rollback_then_continue'` (rollback the transaction, leave connection open). Only meaningful with `decision: 'deny'`.
 - `acknowledgeAuditOnDangerous` — silence the warning when auditing a high-risk operation group instead of denying it.
+- `requireWhere` — when `true`, the rule applies only to mutations that have a `WHERE` clause. Useful for catching unguarded `UPDATE`/`DELETE` statements. Only valid when `operations` contains only `modify` and/or `delete` groups (and their aliases).
 
 ### Connection rules (`policy.databaseConnectionRules`)
 
@@ -469,6 +470,7 @@ The TS schema catches local-property bugs at parse time:
 - `databaseConnectionRules[].decision: 'redirect'` is rejected (not a valid value).
 - `databaseConnectionRules[].matchKind: 'cancel'` + `decision: 'approve'` is rejected.
 - Duplicate rule names within either list are rejected.
+- `databaseRules[].requireWhere: true` rejected when `operations` includes any non-modify/delete group (e.g., `'read'`, `'schema_destroy'`).
 
 The TS schema does **not** validate cross-rule or runtime-dependent constraints — those are deferred to agentsh's startup validator and surface as `ProvisioningError` when `secureSandbox()` is called. These include:
 

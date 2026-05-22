@@ -406,6 +406,7 @@ function serializeDatabaseRule(rule: DatabaseRule): Record<string, unknown> {
   if (rule.message) out.message = rule.message;
   if (rule.timeout) out.timeout = rule.timeout;
   if (rule.redirect) out.redirect = { relation: rule.redirect.relation };
+  if (rule.requireWhere !== undefined) out.require_where = rule.requireWhere;
   if (rule.acknowledgeAuditOnDangerous !== undefined) {
     out.acknowledge_audit_on_dangerous = rule.acknowledgeAuditOnDangerous;
   }

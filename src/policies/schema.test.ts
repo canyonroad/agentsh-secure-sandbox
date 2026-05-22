@@ -955,6 +955,24 @@ describe('DatabaseRuleSchema', () => {
       expect((result.data as any).newFutureField).toBe(42);
     }
   });
+
+  it('accepts requireWhere with modify/delete operations', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['modify', 'delete'], decision: 'deny', requireWhere: true,
+    }).success).toBe(true);
+  });
+
+  it('accepts requireWhere with the UPDATE alias', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['UPDATE'], decision: 'deny', requireWhere: true,
+    }).success).toBe(true);
+  });
+
+  it('accepts requireWhere: false unconditionally', () => {
+    expect(DatabaseRuleSchema.safeParse({
+      name: 'r', operations: ['read'], decision: 'allow', requireWhere: false,
+    }).success).toBe(true);
+  });
 });
 
 describe('DatabaseConnectionRuleSchema', () => {
@@ -1183,5 +1201,22 @@ describe('PolicyDefinitionSchema — DB validation rules', () => {
       const issue = result.error.issues.find(i => i.message.includes('non-empty'));
       expect(issue?.path).toEqual(['databaseRules', 0, 'operations']);
     }
+  });
+
+  it('rejects requireWhere: true when operations include a non-modify/delete group', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'r1', operations: ['read'], decision: 'deny', requireWhere: true }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('require_where'))).toBe(true);
+    }
+  });
+
+  it('accepts requireWhere: true when operations are only modify/delete', () => {
+    const result = PolicyDefinitionSchema.safeParse({
+      databaseRules: [{ name: 'r1', operations: ['modify', 'delete'], decision: 'deny', requireWhere: true }],
+    });
+    expect(result.success).toBe(true);
   });
 });

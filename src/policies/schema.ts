@@ -358,6 +358,7 @@ export const DatabaseRuleSchema = z
     operations: z.array(z.string()),
     subtypes: z.array(z.string()).optional(),
     matchObjectResolution: DbObjectResolution.optional(),
+    requireWhere: z.boolean().optional(),
     decision: DbDecision,
     message: z.string().optional(),
     timeout: z.string().optional(),
@@ -404,7 +405,7 @@ export const DatabaseConnectionRuleSchema = z
  */
 function validateDbRules(
   policy: {
-    databaseRules?: Array<{ name: string; operations?: string[]; decision: string; redirect?: { relation: string } }>;
+    databaseRules?: Array<{ name: string; operations?: string[]; decision: string; redirect?: { relation: string }; requireWhere?: boolean }>;
     databaseConnectionRules?: Array<{ name: string; matchKind?: string; decision: string }>;
   },
   ctx: z.RefinementCtx,
@@ -426,6 +427,26 @@ function validateDbRules(
         path: ['databaseRules', i, 'redirect'],
         message: `databaseRules["${r.name}"]: decision "redirect" requires redirect.relation to be set`,
       });
+    }
+    // require_where: true is only valid when operations contain only modify/delete groups
+    if (r.requireWhere === true) {
+      const KNOWN_INCOMPATIBLE = new Set([
+        'read', 'write', 'bulk_load', 'bulk_export',
+        'schema_create', 'schema_alter', 'schema_destroy',
+        'privilege', 'transaction', 'session', 'maintenance',
+        'lock', 'notify', 'procedural', 'unsafe_io', 'unknown', '*',
+        'READ', 'INSERT', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE',
+        'EXPORT', 'LOAD', 'SCHEMA', 'MAINTENANCE',
+        'LOCK_TABLES', 'LISTEN_NOTIFY', 'DANGEROUS',
+      ]);
+      const hasIncompatible = (r.operations ?? []).some(op => KNOWN_INCOMPATIBLE.has(op));
+      if (hasIncompatible) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['databaseRules', i, 'requireWhere'],
+          message: `databaseRules["${r.name}"]: require_where is supported only for modify/delete operations`,
+        });
+      }
     }
   });
 
