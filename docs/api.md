@@ -461,6 +461,18 @@ const sandbox = await secureSandbox(adapter, {
 });
 ```
 
+## Workspace-escape symlink behavior (v0.20.1+)
+
+By default, when a workspace symlink's target resolves outside the workspace root, agentsh evaluates the resolved path against the normal `file_rules` — this is required for ordinary `python -m venv` usage (the link `venv/bin/python -> /usr/bin/python3`). Set `symlinkEscape: 'deny'` on `serverConfig` to restore the historical blanket workspace-escape deny instead.
+
+```ts
+const sandbox = await secureSandbox(adapter, {
+  serverConfig: {
+    symlinkEscape: 'deny',   // 'evaluate' (default) | 'deny'
+  },
+});
+```
+
 ### What the library validates vs. what agentsh validates
 
 The TS schema catches local-property bugs at parse time:

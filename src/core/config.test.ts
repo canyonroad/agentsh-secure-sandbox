@@ -1240,3 +1240,35 @@ describe('generateServerConfig — dbPolicy', () => {
     expect(parsed.policies.db).toEqual({ approval_statement_preview_chars: 0 });
   });
 });
+
+describe('generateServerConfig — symlinkEscape', () => {
+  it('omits policies.symlink_escape when unset (agentsh defaults to "evaluate")', () => {
+    const result = generateServerConfig({});
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies).not.toHaveProperty('symlink_escape');
+  });
+
+  it('emits symlink_escape: "evaluate" when set', () => {
+    const result = generateServerConfig({ symlinkEscape: 'evaluate' });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('evaluate');
+  });
+
+  it('emits symlink_escape: "deny" when set', () => {
+    const result = generateServerConfig({ symlinkEscape: 'deny' });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('deny');
+  });
+
+  it('coexists with policySigning, dbPolicy under the same policies block', () => {
+    const result = generateServerConfig({
+      symlinkEscape: 'deny',
+      policySigning: { mode: 'enforce', trustStore: '/etc/agentsh/keys' },
+      dbPolicy: { logStatements: 'none' },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.policies.symlink_escape).toBe('deny');
+    expect(parsed.policies.signing).toEqual({ mode: 'enforce', trust_store: '/etc/agentsh/keys' });
+    expect(parsed.policies.db).toEqual({ log_statements: 'none' });
+  });
+});

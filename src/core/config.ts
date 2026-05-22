@@ -148,6 +148,16 @@ export interface ServerConfigOpts {
   policiesOverride?: { dir?: string; defaultPolicy?: string };
   policySigning?: { trustStore?: string; mode?: 'enforce' | 'warn' | 'off' };
   /**
+   * Controls how the FUSE policy layer handles workspace-escape symlinks
+   * — links whose target resolves outside the workspace root (agentsh
+   * v0.20.1+). `'evaluate'` (agentsh default) lets such links be
+   * evaluated against the normal `file_rules`, so `python -m venv`
+   * works out of the box. `'deny'` restores the historical blanket
+   * workspace-escape posture. Emitted under `policies.symlink_escape`.
+   * Omitted when unset so agentsh's `'evaluate'` default applies.
+   */
+  symlinkEscape?: 'evaluate' | 'deny';
+  /**
    * Server-side defaults for the DB-access subsystem (agentsh v0.20+).
    * Emitted under `policies.db` in the generated server config. When
    * unset, agentsh applies its own defaults via applyDefaults*.
@@ -638,6 +648,13 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
     if (opts.policySigning.trustStore) signingObj.trust_store = opts.policySigning.trustStore;
     if (opts.policySigning.mode) signingObj.mode = opts.policySigning.mode;
     policies.signing = signingObj;
+    config.policies = policies;
+  }
+
+  // Symlink-escape behavior for FUSE policy layer (v0.20.1+)
+  if (opts.symlinkEscape) {
+    const policies = (config.policies as Record<string, unknown>) ?? {};
+    policies.symlink_escape = opts.symlinkEscape;
     config.policies = policies;
   }
 

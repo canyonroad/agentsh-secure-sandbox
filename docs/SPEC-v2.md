@@ -1103,6 +1103,17 @@ Emitted under `policies.db` in the generated server config. Omitted entirely whe
 | `escalateUnknownFunctions` | `boolean` | `escalate_unknown_functions` | agentsh default: `false` |
 | `safeFunctionAllowlist` | `string[]` | `safe_function_allowlist` | meaningful with `escalateUnknownFunctions: true` |
 
+### `ServerConfigOpts.symlinkEscape` (v0.20.1+)
+
+Controls FUSE policy handling of workspace-escape symlinks. Emitted under `policies.symlink_escape`.
+
+| TS value | YAML | Notes |
+|---|---|---|
+| `'evaluate'` | `evaluate` | agentsh default; lets escaped-target symlinks be evaluated against `file_rules` |
+| `'deny'` | `deny` | historical blanket workspace-escape deny |
+
+Field is optional; agentsh defaults to `'evaluate'` server-side.
+
 ---
 
 ## 10. Provisioning Sequence
