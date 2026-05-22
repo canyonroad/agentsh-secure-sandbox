@@ -19,6 +19,10 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # npm trusted publishing (OIDC) requires npm CLI 11.5.1+
+      # Node 22 ships with npm 10.x, so we upgrade explicitly.
+      - run: npm install -g npm@latest
+
       - run: npm ci
       - run: npm run build
       - run: npm run typecheck
