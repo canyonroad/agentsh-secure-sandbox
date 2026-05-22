@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createRequire } from 'node:module';
-import { ENV } from './helpers.js';
+import { ENV, stripShimNoise } from './helpers.js';
 import { secureSandbox } from '../api.js';
 import { daytona } from '../adapters/daytona.js';
 import type { SecuredSandbox } from '../core/types.js';
@@ -114,8 +114,9 @@ describe.skipIf(!canRun)('Daytona E2E', () => {
     const result = await secured.exec(
       'curl -s -o /dev/null -w "%{http_code}" https://registry.npmjs.org/ || echo "no-curl"',
     );
-    if (!result.stdout.includes('no-curl')) {
-      expect(result.stdout.trim()).toBe('200');
+    const stdout = stripShimNoise(result.stdout);
+    if (!stdout.includes('no-curl')) {
+      expect(stdout).toBe('200');
     }
   });
 
@@ -123,11 +124,20 @@ describe.skipIf(!canRun)('Daytona E2E', () => {
     const result = await secured.exec(
       'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 https://evil.example.com 2>&1',
     );
-    expect(result.stdout.trim()).not.toBe('200');
+    expect(stripShimNoise(result.stdout)).not.toBe('200');
   });
 
   it('filters sensitive env vars from process environment', async () => {
+    // When agentsh runs in minimal mode (seccomp + unix_sockets both
+    // disabled — typical for hosted runtimes that restrict seccomp(2)),
+    // env-var interception is genuinely unavailable: wrap-init refuses
+    // and the command runs unwrapped. The library cannot filter the env
+    // in that mode, so skip the assertion rather than test a feature
+    // that has been intentionally disabled at this layer.
+    if (secured.securityMode === 'minimal') {
+      return;
+    }
     const result = await secured.exec('bash -c "echo $SECRET_KEY"');
-    expect(result.stdout.trim()).toBe('');
+    expect(stripShimNoise(result.stdout)).toBe('');
   });
 });

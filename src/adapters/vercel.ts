@@ -2,9 +2,28 @@ import type { SandboxAdapter, SecureConfig } from '../core/types.js';
 import { agentDefault } from '../policies/presets.js';
 import { mergePrepend } from '../policies/merge.js';
 
+/**
+ * Workaround for @vercel/sandbox ≤1.10.2 on Node ≥26.
+ *
+ * The SDK bundles undici@7 and instantiates a default Agent which it then
+ * passes to globalThis.fetch as `dispatcher`. Node 26 ships built-in undici@8;
+ * mixing the two versions breaks the dispatcher contract — response headers
+ * never surface and `content-encoding: br` bodies are returned raw — so the
+ * SDK throws "Expected a stream of command data" on every runCommand call.
+ * Clearing `agent` makes fetch use Node's default pool, which works.
+ * Remove once Vercel updates the bundled undici — tracked at
+ * https://github.com/vercel/sandbox/issues/198.
+ */
+export async function applyVercelSdkWorkaround(sandbox: any): Promise<void> {
+  const client = await sandbox.ensureClient?.();
+  if (client) client.agent = undefined;
+}
+
 export function vercel(sandbox: any): SandboxAdapter {
+  const workaround = applyVercelSdkWorkaround(sandbox).catch(() => {});
   return {
     async exec(cmd, args, opts) {
+      await workaround;
       const params: Record<string, unknown> = {
         cmd,
         args: args ?? [],
@@ -27,10 +46,12 @@ export function vercel(sandbox: any): SandboxAdapter {
       };
     },
     async writeFile(path, content, opts) {
+      await workaround;
       const buf = Buffer.isBuffer(content) ? content : Buffer.from(content);
       await sandbox.writeFiles([{ path, content: buf }]);
     },
     async readFile(path) {
+      await workaround;
       const stream = await sandbox.readFile({ path });
       if (!stream) return '';
       const chunks: Buffer[] = [];
@@ -40,9 +61,11 @@ export function vercel(sandbox: any): SandboxAdapter {
       return Buffer.concat(chunks).toString('utf-8');
     },
     async stop() {
+      await workaround;
       await sandbox.stop();
     },
     async fileExists(path) {
+      await workaround;
       const result = await sandbox.runCommand({ cmd: 'test', args: ['-f', path] });
       return result.exitCode === 0;
     },

@@ -1,8 +1,32 @@
 import { IntegrityError } from './errors.js';
 
-export const PINNED_VERSION = '0.19.3';
+export const PINNED_VERSION = '0.20.1';
 
 export const CHECKSUMS: Record<string, Record<string, string>> = {
+  '0.20.1': {
+    linux_amd64:
+      '7e8d49c6774e1945c681525c7f3b5e1506043c6ce50e7412c7708f99661418ed',
+    linux_arm64:
+      '0345c604f0fcf1838b649ed4059b13202652e8a27a9b389902f733087835d826',
+  },
+  '0.20.1-rc1': {
+    linux_amd64:
+      '1df831e885789fda3dd694654f28299385d8f5df3425844d0aa7eabaf0a4fcc1',
+    linux_arm64:
+      '6a4324b07a5e570b945e6cab7fd3602c9e2fdb281439665505e0234ba4babe8a',
+  },
+  '0.20.0': {
+    linux_amd64:
+      'eb6da1554296a56a6e6009f0ba995bc4ba6b7eac4063981308d4955715fb948b',
+    linux_arm64:
+      '9ff2b3b689369199808fe41ddb0898e56a619a6d0a5a4adc0cfca718dd346aa3',
+  },
+  '0.20.0-rc1': {
+    linux_amd64:
+      'f7fe3dc8f9375f3ea3319b6da62ccd4320180d5cf5430fd0148b7bc1e5d9ae5c',
+    linux_arm64:
+      '5e54802c90f3119c43122f7d5602e58aafe0a14e90b8bd935fdad0a331d30044',
+  },
   '0.19.3': {
     linux_amd64:
       '9070c67dc9d78b5bee11fe4a071eb04b5f20ea9192727d6ed214f31f55b533db',

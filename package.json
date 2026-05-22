@@ -1,6 +1,6 @@
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -100,7 +100,7 @@
     "@runloop/api-client": "^1.14.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
-    "@vercel/sandbox": "^1.8.0",
+    "@vercel/sandbox": "^1.10.2",
     "dotenv": "^17.3.1",
     "e2b": "^2.14.1",
     "freestyle-sandboxes": "^0.1.0",
@@ -115,8 +115,8 @@
     "@daytonaio/sdk": ">=0.12.0 <2.0.0",
     "@e2b/code-interpreter": "^1.2.0",
     "@fly/sprites": "^0.0.1",
-    "@vercel/sandbox": "^1.0.0",
     "@runloop/api-client": "^1.0.0",
+    "@vercel/sandbox": "^1.0.0",
     "freestyle-sandboxes": "^0.1.0"
   },
   "peerDependenciesMeta": {
