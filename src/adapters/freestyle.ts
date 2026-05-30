@@ -7,10 +7,26 @@ import { shellEscape, envPrefix } from '../core/shell.js';
 import { CHECKSUMS } from '../core/integrity.js';
 import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
-const AGENTSH_VERSION = '0.20.1';
+const AGENTSH_VERSION = '0.20.3';
 const AGENTSH_SHA256 = CHECKSUMS[AGENTSH_VERSION].linux_amd64;
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
+
+// Cold-start warmup transient: for the first command(s) after the server
+// reports healthy, the agentsh shell shim's per-command seccomp wrap setup can
+// briefly fail while the server settles. These signatures are agentsh
+// shim/server errors (distinct from a command's own non-zero exit), so they
+// are safe to retry. (The *deterministic* fail-close — the server aborting the
+// wrap when the cgroup memory.max write EPERMs — is handled separately by
+// disabling cgroups in freestyleDefaults; this only mops up the warmup window.)
+const TRANSIENT_SHIM_RE =
+  /server rejected wrap setup|kernel install fail-closed|forward notify fd failed|ACK handshake failed|INTERNAL_ERROR: Internal server error/;
+
+function isTransientShimError(r: { exitCode: number; stderr: string }): boolean {
+  return r.exitCode !== 0 && TRANSIENT_SHIM_RE.test(r.stderr);
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const INSTALL_SCRIPT = [
   '#!/bin/bash',
@@ -40,8 +56,10 @@ const STARTUP_SCRIPT = [
   '# Restrict /dev/fuse to prevent any FUSE mount during snapshot',
   'sudo /bin/chmod 600 /dev/fuse 2>/dev/null || true',
   '',
-  '# Start agentsh server in background (deferred FUSE: mounts on first exec)',
-  '/usr/local/bin/agentsh server >> /var/log/agentsh/server.log 2>&1 &',
+  '# Start agentsh server in background (deferred FUSE: mounts on first exec).',
+  '# --config is explicit: agentsh\'s default config search does not include',
+  '# /etc/agentsh/config.yml, so without this our server config is ignored.',
+  '/usr/local/bin/agentsh server --config /etc/agentsh/config.yml >> /var/log/agentsh/server.log 2>&1 &',
   'SERVER_PID=$!',
   '',
   '# Wait for server to be ready (health check loop)',
@@ -96,7 +114,7 @@ const STARTUP_SCRIPT = [
  * ```
  */
 export function freestyle(vm: any): SandboxAdapter {
-  async function run(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  async function runOnce(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     try {
       const result = await vm.exec({ command, timeoutMs });
       return {
@@ -113,9 +131,26 @@ export function freestyle(vm: any): SandboxAdapter {
     }
   }
 
+  // Retry only transient shim warmup failures (never a command's own non-zero
+  // exit). Up to 3 retries with escalating backoff covers the brief settling
+  // window observed right after the server reports healthy.
+  async function run(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    let result = await runOnce(command, timeoutMs);
+    for (let attempt = 1; attempt <= 3 && isTransientShimError(result); attempt++) {
+      await sleep(250 * attempt);
+      result = await runOnce(command, timeoutMs);
+    }
+    return result;
+  }
+
   return {
     async exec(cmd, args, opts) {
-      const inner = `${envPrefix(opts?.env)}${opts?.sudo ? 'sudo ' : ''}${shellEscape(cmd, args)}`;
+      // Note: opts.sudo is intentionally ignored. Freestyle VMs run commands as
+      // root, so sudo is unnecessary; worse, freestyleDefaults' policy denies
+      // the sudo binary, so a `sudo …` prefix fails with exit 126 ("sudo:
+      // Permission denied"). Provisioning issues chmod/chown/mkdir with
+      // sudo:true — running them bare (as root) is correct here.
+      const inner = `${envPrefix(opts?.env)}${shellEscape(cmd, args)}`;
       const wrapped = opts?.cwd
         ? `cd '${opts.cwd.replace(/'/g, "'\\''")}' && ${inner}`
         : inner;
@@ -151,7 +186,14 @@ export function freestyle(vm: any): SandboxAdapter {
       await vm.stop();
     },
     async fileExists(path) {
-      return await vm.fs.exists(path);
+      // Use a retrying `test -e` via exec rather than vm.fs.exists: the SDK's
+      // exists() also shells out (`test -e`) through the shim, so it is subject
+      // to the same warmup transient — routing it through run() gives it the
+      // retry. A genuinely missing path returns exit 1 with empty stderr, which
+      // is not a transient signature, so it is not retried.
+      const quoted = `'${path.replace(/'/g, "'\\''")}'`;
+      const result = await run(`test -e ${quoted}`);
+      return result.exitCode === 0;
     },
   };
 }
@@ -206,7 +248,17 @@ export function freestyleDefaults(): Partial<SecureConfig> {
       fileMonitor: { enabled: false, enforceWithoutFuse: false },
       mitigationSets: [KNOWN_MITIGATIONS.dirtyfragConservative],
     },
-    cgroups: { enabled: true },
+    // Freestyle runs the sandbox under a nested cgroup
+    // (freestyle-supervisor.service) whose subtree_control can't be edited, so
+    // agentsh can't enable controllers and even its fallback agentsh.slice
+    // memory.max is not writable. With cgroups enabled, the server's
+    // per-command wrap setup writes memory.max BEFORE acking the shim; that
+    // write EPERMs, the server aborts the wrap and closes the socket, and the
+    // fail-closed shim aborts every command with exit 126 ("server rejected
+    // wrap setup"). Disabling cgroups avoids that write. The limits weren't
+    // enforceable on Freestyle anyway (documented gap), and the inner policy
+    // resourceLimits below stay as advisory metadata.
+    cgroups: { enabled: false },
     unixSockets: { enabled: true },
     envInject: {
       BASH_ENV: '/usr/lib/agentsh/bash_startup.sh',

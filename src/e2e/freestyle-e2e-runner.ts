@@ -37,6 +37,10 @@ async function test(name: string, fn: () => void | Promise<void>) {
     failed++;
     console.log(`  ✗ ${name}`);
     console.log(`    ${err.message}`);
+    if (err?.command || err?.stderr) {
+      console.log(`    command: ${err.command}`);
+      console.log(`    stderr: ${String(err.stderr).slice(0, 600)}`);
+    }
   }
 }
 

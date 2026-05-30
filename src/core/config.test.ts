@@ -430,6 +430,20 @@ describe('generateServerConfig — extended fields', () => {
     expect(parsed.sandbox.seccomp.file_monitor).toEqual({ enabled: true, enforce_without_fuse: false });
   });
 
+  it('serializes seccomp.shellc.opaque (agentsh v0.20.x)', () => {
+    const result = generateServerConfig({
+      seccompDetails: { execve: true, shellc: { opaque: 'allow' } },
+    });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.shellc).toEqual({ opaque: 'allow' });
+  });
+
+  it('omits seccomp.shellc when not configured', () => {
+    const result = generateServerConfig({ seccompDetails: { execve: true } });
+    const parsed = yaml.load(result) as any;
+    expect(parsed.sandbox.seccomp.shellc).toBeUndefined();
+  });
+
   it('emits blocked_socket_families: [] for explicit opt-out', () => {
     const result = generateServerConfig({
       seccompDetails: { blockedSocketFamilies: [] },

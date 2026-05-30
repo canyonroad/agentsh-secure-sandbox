@@ -606,8 +606,14 @@ async function detectSecurityMode(
     });
   }
 
-  // agentsh detect outputs JSON to stderr
-  const jsonOutput = result.stderr || result.stdout;
+  // agentsh detect emits its JSON to stderr, but a working shell shim (e.g.
+  // Freestyle) also writes wrap diagnostics ("INFO seccomp: filter loaded …")
+  // to stderr ahead of it. Extract the JSON object from whichever stream
+  // carries it rather than parsing the raw, possibly noise-prefixed stream.
+  const combined = `${result.stdout}\n${result.stderr}`;
+  const start = combined.indexOf('{');
+  const end = combined.lastIndexOf('}');
+  const jsonOutput = start >= 0 && end > start ? combined.slice(start, end + 1) : combined;
   let parsed: { security_mode: string };
   try {
     parsed = JSON.parse(jsonOutput);
@@ -615,7 +621,7 @@ async function detectSecurityMode(
     throw new ProvisioningError({
       phase: 'install',
       command: 'agentsh detect --output json',
-      stderr: `Failed to parse detect JSON: ${jsonOutput.slice(0, 200)}`,
+      stderr: `Failed to parse detect JSON: ${combined.slice(0, 200)}`,
     });
   }
 

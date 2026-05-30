@@ -100,6 +100,13 @@ export interface ServerConfigOpts {
       internalBypass?: string[];
     };
     fileMonitor?: { enabled?: boolean; enforceWithoutFuse?: boolean; interceptMetadata?: boolean; openatEmulation?: boolean; blockIoUring?: boolean };
+    /**
+     * Handling of opaque `bash -c`/`sh -c` scripts (agentsh v0.20.x):
+     *   'deny'    — hard-deny any unparseable shell-c script (fail-closed)
+     *   'enforce' — run it but police every inner execve via seccomp (agentsh default)
+     *   'allow'   — run without a pre-deny even when interception is off
+     */
+    shellc?: { opaque?: 'deny' | 'enforce' | 'allow' };
     blockedSocketFamilies?: Array<{
       family: string;
       action?: SeccompAction;
@@ -540,6 +547,9 @@ export function generateServerConfig(opts: ServerConfigOpts): string {
         ...(opts.seccompDetails.fileMonitor.openatEmulation !== undefined && { openat_emulation: opts.seccompDetails.fileMonitor.openatEmulation }),
         ...(opts.seccompDetails.fileMonitor.blockIoUring !== undefined && { block_io_uring: opts.seccompDetails.fileMonitor.blockIoUring }),
       };
+    }
+    if (opts.seccompDetails.shellc && opts.seccompDetails.shellc.opaque !== undefined) {
+      sec.shellc = { opaque: opts.seccompDetails.shellc.opaque };
     }
     if (opts.seccompDetails.blockedSocketFamilies !== undefined) {
       sec.blocked_socket_families = opts.seccompDetails.blockedSocketFamilies.map(e => ({

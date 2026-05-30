@@ -912,13 +912,13 @@ describe('freestyle adapter', () => {
     expect(command).toContain('server start');
   });
 
-  it('prepends sudo when opts.sudo is true', async () => {
+  it('ignores opts.sudo — freestyle runs commands as root and its policy blocks the sudo binary', async () => {
     const mock = mockVm();
     const adapter = freestyle(mock);
     await adapter.exec('chmod', ['755', '/tmp/x'], { sudo: true });
-    expect(mock.exec).toHaveBeenCalledWith(
-      expect.objectContaining({ command: expect.stringContaining('sudo chmod') }),
-    );
+    const command = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(command).not.toContain('sudo');
+    expect(command).toContain('chmod 755 /tmp/x');
   });
 
   it('wraps with cd when opts.cwd is set', async () => {
@@ -992,6 +992,30 @@ describe('freestyle adapter', () => {
     expect(result.stderr).toContain('network error');
   });
 
+  it('retries a transient shim wrap-setup failure (cold-start warmup) then succeeds', async () => {
+    const mock = mockVm();
+    mock.exec
+      .mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'agentsh-shell-shim: kernel install fail-closed: forward notify fd failed: read notify setup status: server rejected wrap setup',
+        statusCode: 126,
+      })
+      .mockResolvedValueOnce({ stdout: 'hello', stderr: '', statusCode: 0 });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('echo', ['hello']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('hello');
+    expect((mock.exec as any).mock.calls.length).toBe(2);
+  });
+
+  it('does NOT retry a legitimate non-zero exit', async () => {
+    const mock = mockVm({ stdout: '', stderr: "ls: cannot access '/nope': No such file or directory", statusCode: 2 });
+    const adapter = freestyle(mock);
+    const result = await adapter.exec('ls', ['/nope']);
+    expect(result.exitCode).toBe(2);
+    expect((mock.exec as any).mock.calls.length).toBe(1);
+  });
+
   it('writeFile with string uses vm.fs.writeTextFile', async () => {
     const mock = mockVm();
     const adapter = freestyle(mock);
@@ -1032,14 +1056,23 @@ describe('freestyle adapter', () => {
     await expect(adapter.readFile('/missing')).rejects.toThrow(/readFile failed.*no such file/);
   });
 
-  it('fileExists returns vm.fs.exists result', async () => {
+  it('fileExists uses a retrying `test -e` via exec (not vm.fs.exists, which would also fail-close)', async () => {
     const mock = mockVm();
-    mock.fs.exists.mockResolvedValueOnce(true);
+    mock.exec
+      .mockResolvedValueOnce({ stdout: '', stderr: 'server rejected wrap setup', statusCode: 126 })
+      .mockResolvedValueOnce({ stdout: '', stderr: '', statusCode: 0 });
     const adapter = freestyle(mock);
     expect(await adapter.fileExists!('/usr/local/bin/agentsh')).toBe(true);
+    const cmd = (mock.exec as any).mock.calls[0][0].command as string;
+    expect(cmd).toContain('test -e');
+    expect(mock.fs.exists).not.toHaveBeenCalled();
+  });
 
-    mock.fs.exists.mockResolvedValueOnce(false);
+  it('fileExists returns false for a genuinely missing path (exit 1, no retry)', async () => {
+    const mock = mockVm({ stdout: '', stderr: '', statusCode: 1 });
+    const adapter = freestyle(mock);
     expect(await adapter.fileExists!('/nope')).toBe(false);
+    expect((mock.exec as any).mock.calls.length).toBe(1);
   });
 
   it('stop calls vm.stop', async () => {
@@ -1242,12 +1275,23 @@ describe('provider defaults', () => {
       configureFreestyleSpec(spec);
       const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
       const files = filesCall!.args[0];
-      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.20.1"');
-      expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server');
+      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.20.3"');
+      // The server must be started with explicit --config; agentsh's default
+      // search (./config.yml, ./config.yaml, /etc/agentsh/config.yaml) does NOT
+      // include /etc/agentsh/config.yml, so without this our config is ignored.
+      expect(files['/opt/agentsh-startup.sh'].content).toContain('agentsh server --config /etc/agentsh/config.yml');
       expect(files['/etc/agentsh/config.yml'].content).toBeDefined();
       expect(files['/etc/agentsh/policy.yml'].content).toContain('/home/user');
       expect(files['/etc/agentsh/system/policy.yml'].content).toContain('_system-protection');
       expect(files['/etc/environment'].content).toContain('AGENTSH_SERVER=http://127.0.0.1:18080');
+    });
+
+    it('disables cgroups (Freestyle nested cgroups EPERM the per-command wrap setup, fail-closing the shim)', () => {
+      const spec = mockSpec();
+      configureFreestyleSpec(spec);
+      const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
+      const files = filesCall!.args[0];
+      expect(files['/etc/agentsh/config.yml'].content).toMatch(/cgroups:\s*\n\s*enabled: false/);
     });
 
     it('creates two systemd services with correct ordering and hard Requires dependency', () => {
