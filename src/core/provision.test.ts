@@ -481,6 +481,18 @@ describe('provision', () => {
     expect(result.sessionId).toBe('test-session-123');
   });
 
+  it('parses detect JSON even when the shim prepends wrap noise to stderr', async () => {
+    // On Freestyle the working shell shim writes "INFO seccomp: filter loaded …"
+    // to every command's stderr, ahead of agentsh detect's JSON. The JSON must
+    // still be extracted rather than naively JSON.parse(stderr).
+    const noise = 'INFO seccomp: filter loaded fd=5 wait_killable=true libseccomp_runtime=2.6.0\n';
+    const adapter = createMockAdapter({
+      'agentsh detect': { stdout: '', stderr: noise + JSON.stringify({ security_mode: 'landlock' }), exitCode: 0 },
+    });
+    const result = await provision(adapter, {});
+    expect(result.securityMode).toBe('landlock');
+  });
+
   it('ptrace mode does not auto-enable realPaths (no FUSE)', async () => {
     const adapter = createMockAdapter({
       'agentsh detect': { stdout: '', stderr: JSON.stringify({ security_mode: 'ptrace' }), exitCode: 0 },
