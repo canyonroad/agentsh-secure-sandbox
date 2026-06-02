@@ -303,7 +303,11 @@ if (secured) {
 // ── Cleanup ──────────────────────────────────────────────────
 
 console.log('\n  → terminating Tensorlake sandbox...');
-await send({ cmd: 'terminate' }).catch(() => {});
+// If the bridge already exited (e.g. sandbox creation failed), skip the
+// terminate round-trip — otherwise send() would block for its full timeout.
+if (bridge.exitCode === null) {
+  await send({ cmd: 'terminate' }).catch(() => {});
+}
 bridge.kill();
 
 // ── Summary ──────────────────────────────────────────────────

@@ -91,9 +91,15 @@ export function tensorlake(sandbox: any, opts?: TensorlakeOptions): SandboxAdapt
 
       if (opts?.detached) {
         const inner = shellEscape(cmd, args);
-        sandbox
-          .run('bash', ['-c', `nohup ${inner} > /dev/null 2>&1 &`], { env })
-          .catch(() => {});
+        // Best-effort fire-and-forget: swallow both a synchronous throw and an
+        // async rejection so a detached launch never surfaces an error.
+        try {
+          void Promise.resolve(
+            sandbox.run('bash', ['-c', `nohup ${inner} > /dev/null 2>&1 &`], { env }),
+          ).catch(() => {});
+        } catch {
+          /* ignore */
+        }
         return { stdout: '', stderr: '', exitCode: 0 };
       }
 

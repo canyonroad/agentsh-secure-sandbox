@@ -1408,6 +1408,19 @@ describe('tensorlake adapter', () => {
     expect(args[1]).toContain('ls -la');
   });
 
+  it('detached exec returns immediately without awaiting sandbox.run', async () => {
+    // run() returns a promise that never settles; exec must not await it.
+    const run = vi.fn(() => new Promise(() => {}));
+    const adapter = tensorlake({ run });
+    const result = await adapter.exec('sleep', ['100'], { detached: true });
+    expect(result).toEqual({ stdout: '', stderr: '', exitCode: 0 });
+    expect(run).toHaveBeenCalledTimes(1);
+    const [cmd, args] = run.mock.calls[0];
+    expect(cmd).toBe('bash');
+    expect(args[1]).toContain('nohup');
+    expect(args[1]).toContain('sleep 100');
+  });
+
   it('writeFile calls sandbox.write_file with a Buffer', async () => {
     const write_file = vi.fn(async () => {});
     const adapter = tensorlake({ run: vi.fn(), write_file });

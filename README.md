@@ -119,6 +119,8 @@ Every provider gets the same protections — the enforcement mechanism adapts to
 | **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
+> ⚠️ **Network filtering on Tensorlake** is enforced via the agentsh DNS proxy only — this provider's kernel lacks BTF, so eBPF-based connect/bind interception is unavailable. Domain egress is still enforced; raw-IP egress is weaker. See the Tensorlake note below.
+
 Different platforms use different kernel mechanisms to achieve these protections:
 
 | Provider | Primary Enforcement | Security Mode |
