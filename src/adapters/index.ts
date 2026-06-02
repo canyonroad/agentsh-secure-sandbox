@@ -8,3 +8,4 @@ export { modal, modalDefaults } from './modal.js';
 export { runloop, runloopDefaults } from './runloop.js';
 export { exe, exeDefaults } from './exe.js';
 export { freestyle, freestyleDefaults, configureFreestyleSpec } from './freestyle.js';
+export { tensorlake, tensorlakeDefaults } from './tensorlake.js';
