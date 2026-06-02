@@ -1,6 +1,6 @@
 # @agentsh/secure-sandbox
 
-Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), [Modal](https://modal.com), [Runloop](https://runloop.ai), [exe.dev](https://exe.dev), and [Freestyle](https://freestyle.sh). Powered by [agentsh](https://www.agentsh.org).
+Runtime security for AI agent sandboxes. Drop-in protection against prompt injection, secret exfiltration, and sandbox escape — works with [Vercel](https://vercel.com/sandbox), [E2B](https://e2b.dev/), [Daytona](https://www.daytona.io/), [Cloudflare Containers](https://developers.cloudflare.com/containers/), [Blaxel](https://blaxel.ai/sandbox), [Sprites](https://sprites.dev), [Modal](https://modal.com), [Runloop](https://runloop.ai), [exe.dev](https://exe.dev), [Freestyle](https://freestyle.sh), and [Tensorlake](https://www.tensorlake.ai/). Powered by [agentsh](https://www.agentsh.org).
 
 ```bash
 npm install @agentsh/secure-sandbox
@@ -110,14 +110,14 @@ Enforcement happens at the **kernel level** — Landlock restricts filesystem ac
 
 Every provider gets the same protections — the enforcement mechanism adapts to what the kernel supports:
 
-| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal | Runloop | exe.dev | Freestyle |
-|------------|--------|-----|---------|------------|--------|---------|-------|---------|---------|-----------|
-| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Protection | Vercel | E2B | Daytona | Cloudflare | Blaxel | Sprites | Modal | Runloop | exe.dev | Freestyle | Tensorlake |
+|------------|--------|-----|---------|------------|--------|---------|-------|---------|---------|-----------|------------|
+| **File access control** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Network filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| **Command mediation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Secret filtering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Threat intelligence** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DLP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Different platforms use different kernel mechanisms to achieve these protections:
 
@@ -133,6 +133,7 @@ Different platforms use different kernel mechanisms to achieve these protections
 | [**Runloop**](https://runloop.ai) | Landlock + network proxy + shell shim | `full` |
 | [**exe.dev**](https://exe.dev) | ptrace + seccomp + Landlock + FUSE + cgroups + network proxy | `full` |
 | [**Freestyle**](https://freestyle.sh) | seccomp (per-command wrapper) + network proxy + FUSE (deferred) + cgroups | `minimal` |
+| [**Tensorlake**](https://www.tensorlake.ai/) | seccomp + FUSE + ptrace (execve/openat/connect) + network proxy (DNS) + cgroups | `full` |
 
 > **Optional hardening:** seccomp and FUSE are available but disabled by default for compatibility. seccomp adds syscall-level command interception; FUSE adds a virtual filesystem layer with soft-delete quarantine. Enable via `serverConfig: { seccompDetails: { execve: true } }` or `serverConfig: { fuse: { deferred: true } }`.
 >
@@ -143,6 +144,8 @@ Different platforms use different kernel mechanisms to achieve these protections
 > **exe.dev:** Full kernel capabilities — all enforcement layers active (ptrace + seccomp + Landlock + FUSE + cgroups). Persistent VMs accessed via SSH; `stop()` is a no-op.
 >
 > **Freestyle:** The Freestyle kernel lacks Yama, so agentsh's seccomp file_monitor is disabled (it conflicts with FUSE without Yama). FUSE runs in deferred mode with `sudo /bin/chmod 666 /dev/fuse` at first session start. Security mode settles into `minimal` — enforcement comes from the per-command seccomp wrapper, the embedded network/DLP proxy, FUSE soft-delete, and cgroups. Bake agentsh into the VM at spec time via `configureFreestyleSpec` for faster cold boots.
+>
+> **Tensorlake:** agentsh is baked into the sandbox image and started by systemd (server + shell shim installed at build time), so the library uses `installStrategy: 'running'` (passthrough — the shim enforces policy on every command). Build the image with the Python `build_image.py` in the [agentsh-tensorlake](https://github.com/canyonroad/agentsh-tensorlake) repo. Tensorlake's exec API replaces the inherited environment, so the adapter injects `AGENTSH_SHIM_FORCE` / `AGENTSH_SERVER` / `PATH` / `HOME` on every command to keep enforcement from silently lapsing. Network policy enforces via the agentsh DNS proxy (this kernel lacks BTF for eBPF).
 
 ```typescript
 // E2B
@@ -197,6 +200,13 @@ const sandbox = await secureSandbox(freestyle(vm), {
   ...freestyleDefaults(),
   installStrategy: 'preinstalled',
 });
+
+// Tensorlake (Firecracker microVMs; Python SDK, agentsh baked into the image)
+// One-time: build the image via build_image.py in the agentsh-tensorlake repo.
+import { tensorlake, tensorlakeDefaults } from '@agentsh/secure-sandbox/adapters/tensorlake';
+// `sb` is a connected Tensorlake sandbox built from the agentsh image
+const sandbox = await secureSandbox(tensorlake(sb), tensorlakeDefaults());
+await sandbox.exec('echo hello');
 ```
 
 ## Default Policy
