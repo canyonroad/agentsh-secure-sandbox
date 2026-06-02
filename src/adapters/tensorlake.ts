@@ -133,11 +133,13 @@ export function tensorlake(sandbox: any, opts?: TensorlakeOptions): SandboxAdapt
 
     async stop() {
       // Tensorlake lifecycle is normally caller-managed via the context manager
-      // (`create_and_connect`); terminate if the SDK exposes it.
+      // (`create_and_connect`). stop() is best-effort: attempt both terminate
+      // and close if present, and never let a failure in one propagate.
       if (typeof sandbox.terminate === 'function') {
-        await sandbox.terminate();
-      } else if (typeof sandbox.close === 'function') {
-        await sandbox.close();
+        try { await sandbox.terminate(); } catch { /* best-effort */ }
+      }
+      if (typeof sandbox.close === 'function') {
+        try { await sandbox.close(); } catch { /* best-effort */ }
       }
     },
 
