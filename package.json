@@ -1,6 +1,6 @@
 {
   "name": "@agentsh/secure-sandbox",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -57,6 +57,10 @@
       "types": "./dist/adapters/freestyle.d.ts",
       "import": "./dist/adapters/freestyle.js"
     },
+    "./adapters/tensorlake": {
+      "types": "./dist/adapters/tensorlake.d.ts",
+      "import": "./dist/adapters/tensorlake.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
@@ -81,6 +85,7 @@
     "test:e2e:runloop": "npx tsx src/e2e/runloop-e2e-runner.ts",
     "test:e2e:exe": "npx tsx src/e2e/exe-e2e-runner.ts",
     "test:e2e:freestyle": "npx tsx src/e2e/freestyle-e2e-runner.ts",
+    "test:e2e:tensorlake": "npx tsx src/e2e/tensorlake-e2e-runner.ts",
     "build:images": "npx tsx scripts/build-sandbox-images.ts",
     "build:images:e2b": "npx tsx scripts/build-sandbox-images.ts --provider e2b",
     "build:images:cloudflare": "npx tsx scripts/build-sandbox-images.ts --provider cloudflare",

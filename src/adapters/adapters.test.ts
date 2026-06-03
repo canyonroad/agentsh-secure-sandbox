@@ -8,6 +8,7 @@ import { sprites } from './sprites.js';
 import { modal } from './modal.js';
 import { runloop } from './runloop.js';
 import { freestyle, configureFreestyleSpec } from './freestyle.js';
+import { tensorlake } from './tensorlake.js';
 import { vercelDefaults } from './vercel.js';
 import { e2bDefaults } from './e2b.js';
 import { daytonaDefaults } from './daytona.js';
@@ -18,6 +19,7 @@ import { spritesDefaults } from './sprites.js';
 import { runloopDefaults } from './runloop.js';
 import { freestyleDefaults } from './freestyle.js';
 import { exeDefaults } from './exe.js';
+import { tensorlakeDefaults } from './tensorlake.js';
 import { PolicyDefinitionSchema } from '../policies/schema.js';
 import { serializePolicy } from '../policies/serialize.js';
 import { shellEscape } from '../core/shell.js';
@@ -1352,5 +1354,98 @@ describe('provider defaults', () => {
       .filter((r: any) => 'softDelete' in r)
       .flatMap((r: any) => Array.isArray(r.softDelete) ? r.softDelete : [r.softDelete]);
     expect(softDeletePaths).toContain('/workspace/**');
+  });
+});
+
+describe('tensorlake adapter', () => {
+  it('injects the shim env and passes cmd/args straight to sandbox.run', async () => {
+    const run = vi.fn(async () => ({ stdout: 'hi', stderr: '', exit_code: 0 }));
+    const adapter = tensorlake({ run });
+    const result = await adapter.exec('bash', ['-c', 'echo hi']);
+    expect(run).toHaveBeenCalledWith(
+      'bash',
+      ['-c', 'echo hi'],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          AGENTSH_SHIM_FORCE: '1',
+          AGENTSH_SERVER: 'http://127.0.0.1:18080',
+          HOME: '/home/tl-user',
+          PATH: expect.stringContaining('/usr/bin'),
+        }),
+      }),
+    );
+    expect(result).toEqual({ stdout: 'hi', stderr: '', exitCode: 0 });
+  });
+
+  it('merges opts.env over the shim env', async () => {
+    const run = vi.fn(async () => ({ stdout: '', stderr: '', exit_code: 0 }));
+    const adapter = tensorlake({ run });
+    await adapter.exec('bash', ['-c', 'true'], {
+      env: { TRACEPARENT: '00-abc-def-01', HOME: '/custom' },
+    });
+    const passedEnv = run.mock.calls[0][2].env;
+    expect(passedEnv.TRACEPARENT).toBe('00-abc-def-01');
+    expect(passedEnv.HOME).toBe('/custom');
+    expect(passedEnv.AGENTSH_SHIM_FORCE).toBe('1');
+  });
+
+  it('maps exit_code to exitCode', async () => {
+    const run = vi.fn(async () => ({ stdout: '', stderr: 'boom', exit_code: 126 }));
+    const adapter = tensorlake({ run });
+    const r = await adapter.exec('bash', ['-c', 'sudo whoami']);
+    expect(r.exitCode).toBe(126);
+    expect(r.stderr).toBe('boom');
+  });
+
+  it('wraps cwd in a `cd … &&` prefix via bash -c', async () => {
+    const run = vi.fn(async () => ({ stdout: '', stderr: '', exit_code: 0 }));
+    const adapter = tensorlake({ run });
+    await adapter.exec('ls', ['-la'], { cwd: '/workspace' });
+    const [cmd, args] = run.mock.calls[0];
+    expect(cmd).toBe('bash');
+    expect(args[0]).toBe('-c');
+    expect(args[1]).toContain("cd '/workspace' &&");
+    expect(args[1]).toContain('ls -la');
+  });
+
+  it('detached exec returns immediately without awaiting sandbox.run', async () => {
+    // run() returns a promise that never settles; exec must not await it.
+    const run = vi.fn(() => new Promise(() => {}));
+    const adapter = tensorlake({ run });
+    const result = await adapter.exec('sleep', ['100'], { detached: true });
+    expect(result).toEqual({ stdout: '', stderr: '', exitCode: 0 });
+    expect(run).toHaveBeenCalledTimes(1);
+    const [cmd, args] = run.mock.calls[0];
+    expect(cmd).toBe('bash');
+    expect(args[1]).toContain('nohup');
+    expect(args[1]).toContain('sleep 100');
+  });
+
+  it('writeFile calls sandbox.write_file with a Buffer', async () => {
+    const write_file = vi.fn(async () => {});
+    const adapter = tensorlake({ run: vi.fn(), write_file });
+    await adapter.writeFile('/workspace/a.txt', 'hello');
+    expect(write_file).toHaveBeenCalledWith('/workspace/a.txt', Buffer.from('hello'));
+  });
+
+  it('honors TensorlakeOptions overrides in the injected env', async () => {
+    const run = vi.fn(async () => ({ stdout: '', stderr: '', exit_code: 0 }));
+    const adapter = tensorlake(
+      { run },
+      { serverAddr: 'http://127.0.0.1:9999', home: '/root', path: '/bin' },
+    );
+    await adapter.exec('bash', ['-c', 'true']);
+    const env = run.mock.calls[0][2].env;
+    expect(env.AGENTSH_SERVER).toBe('http://127.0.0.1:9999');
+    expect(env.HOME).toBe('/root');
+    expect(env.PATH).toBe('/bin');
+  });
+
+  it('tensorlakeDefaults returns running passthrough config', () => {
+    const d = tensorlakeDefaults();
+    expect(d.installStrategy).toBe('running');
+    expect(d.workspace).toBe('/workspace');
+    expect(d.sessionId).toBeTruthy();
+    expect(d.securityMode).toBe('full');
   });
 });

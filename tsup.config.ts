@@ -14,6 +14,7 @@ export default defineConfig({
     'src/adapters/runloop.ts',
     'src/adapters/exe.ts',
     'src/adapters/freestyle.ts',
+    'src/adapters/tensorlake.ts',
     'src/policies/index.ts',
     'src/testing/index.ts',
   ],
