@@ -1277,7 +1277,7 @@ describe('provider defaults', () => {
       configureFreestyleSpec(spec);
       const filesCall = spec._calls.find((c: any) => c.method === 'additionalFiles');
       const files = filesCall!.args[0];
-      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.20.3"');
+      expect(files['/opt/install-agentsh.sh'].content).toContain('AGENTSH_VERSION="0.20.5"');
       // The server must be started with explicit --config; agentsh's default
       // search (./config.yml, ./config.yaml, /etc/agentsh/config.yaml) does NOT
       // include /etc/agentsh/config.yml, so without this our config is ignored.

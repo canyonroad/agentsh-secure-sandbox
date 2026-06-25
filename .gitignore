@@ -5,3 +5,4 @@ dist/
 .env.e2e
 .worktrees/
 .venv/
+.venv-tensorlake/

@@ -110,7 +110,10 @@ import sys, json, base64, os
 from tensorlake.sandbox import SandboxClient
 
 client = SandboxClient.for_cloud(api_key=os.environ["TENSORLAKE_API_KEY"])
-cm = client.create_and_connect(image="${IMAGE}", cpus=2.0, memory_mb=2048, timeout_secs=600)
+# cpus/memory are pinned to this account's per-sandbox quota (max 1 vCPU /
+# 1024 MB). Higher values fail create with "Per-sandbox vCPU/RAM limit
+# exceeded"; raise these if the account quota is increased.
+cm = client.create_and_connect(image="${IMAGE}", cpus=1.0, memory_mb=1024, timeout_secs=600)
 sb = cm.__enter__()
 
 print(json.dumps({"ready": True, "sandbox_id": getattr(sb, "sandbox_id", None)}), flush=True)

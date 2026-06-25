@@ -7,7 +7,7 @@ import { shellEscape, envPrefix } from '../core/shell.js';
 import { CHECKSUMS } from '../core/integrity.js';
 import { KNOWN_MITIGATIONS } from '../core/mitigations.js';
 
-const AGENTSH_VERSION = '0.20.3';
+const AGENTSH_VERSION = '0.20.5';
 const AGENTSH_SHA256 = CHECKSUMS[AGENTSH_VERSION].linux_amd64;
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
