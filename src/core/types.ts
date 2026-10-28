@@ -226,7 +226,7 @@ export interface SecureConfig {
 
   /**
    * Threat intelligence feeds for blocking known-malicious domains.
-   * Default: enabled with URLhaus and Phishing.Database feeds.
+   * Default: enabled with NetAPI and Phishing.Database feeds.
    * Set to `false` to disable, or provide a custom ThreatFeedsConfig.
    */
   threatFeeds?: false | ThreatFeedsConfig;

@@ -62,7 +62,7 @@ describe('generateServerConfig', () => {
     expect(parsed.threat_feeds.enabled).toBe(true);
     expect(parsed.threat_feeds.action).toBe('deny');
     expect(parsed.threat_feeds.feeds).toHaveLength(2);
-    expect(parsed.threat_feeds.feeds[0].name).toBe('urlhaus');
+    expect(parsed.threat_feeds.feeds[0].name).toBe('netapi');
     expect(parsed.threat_feeds.feeds[1].name).toBe('phishing');
     expect(parsed.threat_feeds.allowlist).toContain('registry.npmjs.org');
   });
@@ -1167,10 +1167,10 @@ describe('generateServerConfig — validation', () => {
 });
 
 describe('defaultThreatFeeds', () => {
-  it('has urlhaus and phishing feeds', () => {
+  it('has netapi and phishing feeds', () => {
     expect(defaultThreatFeeds.feeds).toHaveLength(2);
-    expect(defaultThreatFeeds.feeds[0].name).toBe('urlhaus');
-    expect(defaultThreatFeeds.feeds[0].url).toContain('abuse.ch');
+    expect(defaultThreatFeeds.feeds[0].name).toBe('netapi');
+    expect(defaultThreatFeeds.feeds[0].url).toContain('netapi.com');
     expect(defaultThreatFeeds.feeds[1].name).toBe('phishing');
     expect(defaultThreatFeeds.feeds[1].url).toContain('Phishing.Database');
   });

@@ -262,7 +262,7 @@ All live runners load credentials from `.env.e2e`.
 
 ## Threat Intelligence
 
-Out of the box, `secure-sandbox` blocks connections to known-malicious domains using [URLhaus](https://urlhaus.abuse.ch/) (malware distribution) and [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) (active phishing). Package registries are allowlisted so they're never blocked.
+Out of the box, `secure-sandbox` blocks connections to known-malicious domains using [NetAPI](https://netapi.com/compromised-urls/) (compromised and malware domains) and [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) (active phishing). Package registries are allowlisted so they're never blocked.
 
 ```typescript
 // Disable threat feeds

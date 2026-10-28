@@ -184,15 +184,15 @@ export interface ServerConfigOpts {
 }
 
 /**
- * Default threat feeds: URLhaus (malware) + Phishing.Database (phishing).
- * Both are free, open source, and updated frequently.
+ * Default threat feeds: NetAPI compromised domains (malware / phishing) +
+ * Phishing.Database (phishing). Both are free and need no API key.
  */
 export const defaultThreatFeeds: ThreatFeedsConfig = {
   action: 'deny',
   feeds: [
     {
-      name: 'urlhaus',
-      url: 'https://urlhaus.abuse.ch/downloads/hostfile/',
+      name: 'netapi',
+      url: 'https://netapi.com/api2/?method=compromised&dataset_type=url&format=hosts',
       format: 'hostfile',
       refreshInterval: '6h',
     },
